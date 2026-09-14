@@ -541,54 +541,50 @@ export default function Layout({ children }) {
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
         <div
-          className={`fixed inset-0 z-[100] flex items-center justify-center transition-all duration-300 ${
-            logoutAnimating ? 'bg-black/70 backdrop-blur-md' : 'bg-black/40 backdrop-blur-[2px]'
+          className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 transition-opacity duration-200 ${
+            logoutAnimating ? 'opacity-0' : 'opacity-100'
           }`}
         >
           <div
-            className={`bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden transition-all duration-300 ${
-              logoutAnimating ? 'scale-95 opacity-0 translate-y-4' : 'scale-100 opacity-100 translate-y-0'
+            className={`bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 transition-all duration-200 ${
+              logoutAnimating ? 'scale-95 opacity-0' : 'scale-100 opacity-100'
             }`}
           >
-            <div className="p-8 text-center">
-              <div className="relative w-16 h-16 mx-auto mb-5">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-red-500 to-rose-600 shadow-lg shadow-red-500/30" />
-                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-red-500 to-rose-600 animate-ping opacity-20" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  {loggingOut ? (
-                    <svg className="w-7 h-7 text-white animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                    </svg>
-                  )}
-                </div>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                {loggingOut ? (
+                  <svg className="w-6 h-6 text-red-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                    <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                  </svg>
+                )}
               </div>
 
-              <h3 className="text-xl font-bold text-gray-900 tracking-tight">
+              <h3 className="text-base font-semibold text-gray-900">
                 {loggingOut ? 'Logging out...' : 'Log out?'}
               </h3>
-              <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+              <p className="text-sm text-gray-500 mt-1">
                 {loggingOut
-                  ? `Signing out ${user?.full_name} safely. Hang tight!`
-                  : `Are you sure you want to sign out of your account, <span className="font-semibold text-gray-700">${user?.full_name}</span>?`}
+                  ? `Signing out ${user?.full_name}...`
+                  : `Are you sure you want to sign out, ${user?.full_name}?`}
               </p>
             </div>
 
             {!loggingOut && (
-              <div className="px-6 pb-6 flex gap-3">
+              <div className="flex gap-2 mt-5">
                 <button
                   onClick={handleLogoutCancel}
-                  className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleLogoutConfirm}
-                  className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-red-500 to-rose-600 rounded-xl hover:from-red-600 hover:to-rose-700 transition-all shadow-lg shadow-red-500/25"
+                  className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
                 >
                   Log out
                 </button>
