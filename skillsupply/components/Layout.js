@@ -541,36 +541,31 @@ export default function Layout({ children }) {
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
         <div
-          className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 transition-opacity duration-200 ${
+          className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 transition-all duration-250 ease-out ${
             logoutAnimating ? 'opacity-0' : 'opacity-100'
           }`}
         >
           <div
-            className={`bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 transition-all duration-200 ${
-              logoutAnimating ? 'scale-95 opacity-0' : 'scale-100 opacity-100'
+            className={`bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6 transition-all duration-250 ease-out ${
+              logoutAnimating ? 'opacity-0 translate-y-3 scale-95' : 'opacity-100 translate-y-0 scale-100'
             }`}
           >
-            <div className="flex flex-col items-center text-center">
-              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4">
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-2 mb-3">
                 {loggingOut ? (
-                  <svg className="w-6 h-6 text-red-500 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                    <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                ) : (
-                  <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                  </svg>
-                )}
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                  </span>
+                ) : null}
+                <h3 className="text-base font-semibold text-gray-900">
+                  {loggingOut ? 'Logging out...' : 'Log out'}
+                </h3>
               </div>
-
-              <h3 className="text-base font-semibold text-gray-900">
-                {loggingOut ? 'Logging out...' : 'Log out?'}
-              </h3>
               <p className="text-sm text-gray-500 mt-1">
                 {loggingOut
                   ? `Signing out ${user?.full_name}...`
-                  : `Are you sure you want to sign out, ${user?.full_name}?`}
+                  : `Are you sure you want to sign out of your account?`}
               </p>
             </div>
 
@@ -586,7 +581,7 @@ export default function Layout({ children }) {
                   onClick={handleLogoutConfirm}
                   className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
                 >
-                  Log out
+                  Confirm
                 </button>
               </div>
             )}
