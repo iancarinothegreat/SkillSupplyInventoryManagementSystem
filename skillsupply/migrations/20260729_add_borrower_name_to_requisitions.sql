@@ -1,0 +1,2 @@
+ALTER TABLE requisitions
+  ADD COLUMN IF NOT EXISTS borrower_name VARCHAR(150) DEFAULT '';
