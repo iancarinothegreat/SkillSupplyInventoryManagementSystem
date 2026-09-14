@@ -541,13 +541,15 @@ export default function Layout({ children }) {
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
         <div
-          className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 transition-all duration-250 ease-out ${
+          className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 transition-all duration-300 ease-out ${
             logoutAnimating ? 'opacity-0' : 'opacity-100'
           }`}
         >
           <div
-            className={`bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6 transition-all duration-250 ease-out ${
-              logoutAnimating ? 'opacity-0 translate-y-3 scale-95' : 'opacity-100 translate-y-0 scale-100'
+            className={`bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6 transition-all duration-300 ease-out ${
+              logoutAnimating
+                ? 'opacity-0 translate-y-4 scale-90'
+                : 'opacity-100 translate-y-0 scale-100'
             }`}
           >
             <div className="text-center">
@@ -558,7 +560,11 @@ export default function Layout({ children }) {
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
                   </span>
                 ) : null}
-                <h3 className="text-base font-semibold text-gray-900">
+                <h3
+                  className={`text-base font-semibold text-gray-900 transition-all duration-200 ${
+                    loggingOut ? 'text-red-600' : ''
+                  }`}
+                >
                   {loggingOut ? 'Logging out...' : 'Log out'}
                 </h3>
               </div>
