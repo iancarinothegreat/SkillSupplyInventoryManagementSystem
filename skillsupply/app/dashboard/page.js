@@ -30,10 +30,21 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboard();
+
+    const refreshOnFocus = () => {
+      if (document.visibilityState === 'visible') fetchDashboard({ silent: true });
+    };
+    const refreshInterval = setInterval(() => fetchDashboard({ silent: true }), 5000);
+    document.addEventListener('visibilitychange', refreshOnFocus);
+
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener('visibilitychange', refreshOnFocus);
+    };
   }, []);
 
-  async function fetchDashboard() {
-    setLoading(true);
+  async function fetchDashboard({ silent = false } = {}) {
+    if (!silent) setLoading(true);
     const token = localStorage.getItem('token');
     const headers = { Authorization: `Bearer ${token}` };
 
@@ -87,7 +98,7 @@ export default function DashboardPage() {
       // KPI calculations
       const lowStock = items.filter(i => i.quantity <= i.reorder_point).length;
       const totalValue = items.reduce((sum, i) => sum + (parseFloat(i.unit_price || 0) * parseInt(i.quantity || 0)), 0);
-      const pending = requests.filter(r => r.status === 'pending').length;
+      const pending = requests.filter(r => (r.status || '').toLowerCase() === 'pending').length;
 
       const now = new Date();
       const overdue = transactions.filter(tx => {
