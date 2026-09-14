@@ -7,7 +7,6 @@ import Link from 'next/link';
 const ROLES = [
   { value: '1', label: 'Division Staff' },
   { value: '2', label: 'Supply Officer' },
-  { value: '3', label: 'Administrator' },
 ];
 
 const USERNAME_PATTERN = /^[a-zñ]\.[a-zñ][a-zñ]+$/;
@@ -307,7 +306,6 @@ export default function SignupPage() {
                   placeholder="Confirm your password"
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
                 />
-              </div>
               </div>
 
             <button
