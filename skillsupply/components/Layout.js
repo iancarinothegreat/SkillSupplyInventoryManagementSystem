@@ -118,6 +118,7 @@ export default function Layout({ children }) {
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutAnimating, setLogoutAnimating] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [allInventory, setAllInventory] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
@@ -259,12 +260,13 @@ export default function Layout({ children }) {
   }, []);
 
   const handleLogoutConfirm = useCallback(() => {
+    setLoggingOut(true);
     setLogoutAnimating(true);
     setTimeout(() => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       router.push('/login');
-    }, 400);
+    }, 900);
   }, [router]);
 
   const handleLogoutCancel = useCallback(() => {
@@ -540,7 +542,7 @@ export default function Layout({ children }) {
       {showLogoutConfirm && (
         <div
           className={`fixed inset-0 z-[100] flex items-center justify-center transition-all duration-300 ${
-            logoutAnimating ? 'bg-black/60 backdrop-blur-sm' : 'bg-black/40 backdrop-blur-[2px]'
+            logoutAnimating ? 'bg-black/70 backdrop-blur-md' : 'bg-black/40 backdrop-blur-[2px]'
           }`}
         >
           <div
@@ -548,31 +550,50 @@ export default function Layout({ children }) {
               logoutAnimating ? 'scale-95 opacity-0 translate-y-4' : 'scale-100 opacity-100 translate-y-0'
             }`}
           >
-            <div className="p-6 text-center">
-              <div className="w-14 h-14 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-4">
-                <svg className="w-7 h-7 text-red-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                </svg>
+            <div className="p-8 text-center">
+              <div className="relative w-16 h-16 mx-auto mb-5">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-red-500 to-rose-600 shadow-lg shadow-red-500/30" />
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-red-500 to-rose-600 animate-ping opacity-20" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {loggingOut ? (
+                    <svg className="w-7 h-7 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                  )}
+                </div>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">Log out?</h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Are you sure you want to sign out of your account, <span className="font-medium text-gray-700">{user?.full_name}</span>?
+
+              <h3 className="text-xl font-bold text-gray-900 tracking-tight">
+                {loggingOut ? 'Logging out...' : 'Log out?'}
+              </h3>
+              <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                {loggingOut
+                  ? `Signing out ${user?.full_name} safely. Hang tight!`
+                  : `Are you sure you want to sign out of your account, <span className="font-semibold text-gray-700">${user?.full_name}</span>?`}
               </p>
             </div>
-            <div className="px-6 pb-6 flex gap-3">
-              <button
-                onClick={handleLogoutCancel}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleLogoutConfirm}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-red-600 rounded-xl hover:bg-red-700 transition-colors"
-              >
-                Log out
-              </button>
-            </div>
+
+            {!loggingOut && (
+              <div className="px-6 pb-6 flex gap-3">
+                <button
+                  onClick={handleLogoutCancel}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleLogoutConfirm}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-red-500 to-rose-600 rounded-xl hover:from-red-600 hover:to-rose-700 transition-all shadow-lg shadow-red-500/25"
+                >
+                  Log out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
