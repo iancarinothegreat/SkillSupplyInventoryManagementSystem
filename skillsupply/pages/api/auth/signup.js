@@ -26,6 +26,21 @@ export default async function handler(req, res) {
   if (!username || !password || !normalizedFullName)
     return res.status(400).json({ error: 'Full name, username, and password are required' });
 
+  if (!email)
+    return res.status(400).json({ error: 'Email is required' });
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(email))
+    return res.status(400).json({ error: 'Email format is invalid' });
+
+  if (!division_id)
+    return res.status(400).json({ error: 'Division is required' });
+
+  const validDivisions = [1, 2, 3, 4, 5];
+  const selectedDivision = validDivisions.includes(Number(division_id)) ? Number(division_id) : null;
+  if (!selectedDivision)
+    return res.status(400).json({ error: 'Invalid division selected' });
+
   if (contact && contact.length > 11)
     return res.status(400).json({ error: 'Contact number must be at most 11 characters.' });
 
@@ -43,7 +58,6 @@ export default async function handler(req, res) {
 
   const validRoles = [1, 2];
   const selectedRole = validRoles.includes(Number(role_id)) ? Number(role_id) : 1;
-  const selectedDivision = division_id ? Number(division_id) : null;
 
   try {
     const existing = await query(`SELECT user_id FROM users WHERE username = $1`, [normalizedUsername]);

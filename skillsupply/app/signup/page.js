@@ -76,6 +76,19 @@ export default function SignupPage() {
       return;
     }
 
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailPattern.test(email)) {
+      setError('A valid email address is required.');
+      setLoading(false);
+      return;
+    }
+
+    if (!divisionId) {
+      setError('Please select a division.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
@@ -203,7 +216,7 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email <span className="text-red-500">*</span></label>
               <div className="relative">
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,9 +226,10 @@ export default function SignupPage() {
                 </div>
                 <input
                   type="email"
+                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com (optional)"
+                  placeholder="you@example.com"
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
                 />
               </div>
@@ -250,13 +264,14 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Division</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Division <span className="text-red-500">*</span></label>
               <select
+                required
                 value={divisionId}
                 onChange={(e) => setDivisionId(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
               >
-                <option value="">Select a division (optional)</option>
+                <option value="">Select a division</option>
                 {divisions.map((d) => (
                   <option key={d.division_id} value={d.division_id}>{d.division_name}</option>
                 ))}
