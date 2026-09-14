@@ -256,23 +256,14 @@ export default function Layout({ children }) {
   }, []);
 
   const handleLogoutRequest = useCallback(() => {
-    setShowLogoutConfirm(true);
-  }, []);
-
-  const handleLogoutConfirm = useCallback(() => {
     setLoggingOut(true);
     setLogoutAnimating(true);
     setTimeout(() => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       router.push('/login');
-    }, 900);
+    }, 1200);
   }, [router]);
-
-  const handleLogoutCancel = useCallback(() => {
-    setLogoutAnimating(false);
-    setShowLogoutConfirm(false);
-  }, []);
 
   const toggleCollapse = useCallback(() => {
     setCollapsed(prev => {
@@ -560,11 +551,7 @@ export default function Layout({ children }) {
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
                   </span>
                 ) : null}
-                <h3
-                  className={`text-base font-semibold text-gray-900 transition-all duration-200 ${
-                    loggingOut ? 'text-red-600' : ''
-                  }`}
-                >
+                <h3 className="text-base font-semibold text-gray-900">
                   {loggingOut ? 'Logging out...' : 'Log out'}
                 </h3>
               </div>
@@ -575,20 +562,9 @@ export default function Layout({ children }) {
               </p>
             </div>
 
-            {!loggingOut && (
-              <div className="flex gap-2 mt-5">
-                <button
-                  onClick={handleLogoutCancel}
-                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleLogoutConfirm}
-                  className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
-                >
-                  Confirm
-                </button>
+            {loggingOut && (
+              <div className="flex justify-center mt-5">
+                <div className="w-5 h-5 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
               </div>
             )}
           </div>
