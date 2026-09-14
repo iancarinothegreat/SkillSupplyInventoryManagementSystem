@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -40,6 +40,15 @@ export default function SignupPage() {
   const [success, setSuccess] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
+  const [divisionId, setDivisionId] = useState('');
+  const [divisions, setDivisions] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/public/divisions')
+      .then((r) => r.json())
+      .then((data) => setDivisions(Array.isArray(data) ? data : []))
+      .catch(() => setDivisions([]));
+  }, []);
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -71,7 +80,7 @@ export default function SignupPage() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: fullName, username: normalizedUsername, email, contact, password, role_id: roleId }),
+        body: JSON.stringify({ full_name: fullName, username: normalizedUsername, email, contact, password, role_id: roleId, division_id: divisionId }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -236,6 +245,20 @@ export default function SignupPage() {
               >
                 {ROLES.map((r) => (
                   <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Division</label>
+              <select
+                value={divisionId}
+                onChange={(e) => setDivisionId(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              >
+                <option value="">Select a division (optional)</option>
+                {divisions.map((d) => (
+                  <option key={d.division_id} value={d.division_id}>{d.division_name}</option>
                 ))}
               </select>
             </div>

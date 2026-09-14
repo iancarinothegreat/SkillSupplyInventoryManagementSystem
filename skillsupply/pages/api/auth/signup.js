@@ -16,7 +16,7 @@ function normalizeFullName(value) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { full_name, username, email, contact, password, role_id } = req.body;
+  const { full_name, username, email, contact, password, role_id, division_id } = req.body;
 
   const normalizedUsername = username.trim().toLowerCase();
   const normalizedFullName = normalizeFullName(full_name);
@@ -41,8 +41,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Password must be at least 8 characters and include at least one special character.' });
   }
 
-  const validRoles = [1, 2, 3];
+  const validRoles = [1, 2];
   const selectedRole = validRoles.includes(Number(role_id)) ? Number(role_id) : 1;
+  const selectedDivision = division_id ? Number(division_id) : null;
 
   try {
     const existing = await query(`SELECT user_id FROM users WHERE username = $1`, [normalizedUsername]);
@@ -58,10 +59,10 @@ export default async function handler(req, res) {
     const hash = await bcrypt.hash(password, 12);
 
     const result = await query(`
-      INSERT INTO users (role_id, username, password_hash, full_name, email, contact)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING user_id, username, full_name, email, contact, role_id
-    `, [selectedRole, normalizedUsername, hash, normalizedFullName, email || null, contact || null]);
+      INSERT INTO users (role_id, username, password_hash, full_name, email, contact, division_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING user_id, username, full_name, email, contact, role_id, division_id
+    `, [selectedRole, normalizedUsername, hash, normalizedFullName, email || null, contact || null, selectedDivision]);
 
     return res.status(201).json(result.rows[0]);
   } catch (err) {
