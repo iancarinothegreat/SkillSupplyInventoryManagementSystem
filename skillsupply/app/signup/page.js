@@ -307,6 +307,7 @@ export default function SignupPage() {
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
                 />
               </div>
+            </div>
 
             <button
               type="submit"
