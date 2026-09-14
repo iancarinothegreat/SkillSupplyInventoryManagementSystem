@@ -256,6 +256,7 @@ export default function Layout({ children }) {
   }, []);
 
   const handleLogoutRequest = useCallback(() => {
+    setShowLogoutConfirm(true);
     setLoggingOut(true);
     setLogoutAnimating(true);
     setTimeout(() => {
@@ -545,28 +546,22 @@ export default function Layout({ children }) {
           >
             <div className="text-center">
               <div className="flex items-center justify-center gap-2 mb-3">
-                {loggingOut ? (
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-                  </span>
-                ) : null}
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                </span>
                 <h3 className="text-base font-semibold text-gray-900">
-                  {loggingOut ? 'Logging out...' : 'Log out'}
+                  Logging out...
                 </h3>
               </div>
               <p className="text-sm text-gray-500 mt-1">
-                {loggingOut
-                  ? `Signing out ${user?.full_name}...`
-                  : `Are you sure you want to sign out of your account?`}
+                Signing out {user?.full_name}...
               </p>
             </div>
 
-            {loggingOut && (
-              <div className="flex justify-center mt-5">
-                <div className="w-5 h-5 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
-              </div>
-            )}
+            <div className="flex justify-center mt-5">
+              <div className="w-5 h-5 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
+            </div>
           </div>
         </div>
       )}
