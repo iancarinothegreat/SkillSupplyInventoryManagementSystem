@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 const adminNav = [
   { href: '/dashboard', label: 'Dashboard', icon: (
@@ -41,11 +41,23 @@ const adminNav = [
 ];
 
 const adminOnly = [
+  { href: '/audit-logs', label: 'Audit Logs', icon: (
+    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+    </svg>
+  )},
   { href: '/users', label: 'Users', icon: (
     <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
       <circle cx="9" cy="7" r="4"/>
       <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+    </svg>
+  )},
+  { href: '/backup', label: 'Backup & Recovery', icon: (
+    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>
   )},
 ];
@@ -56,20 +68,25 @@ const staffNav = [
       <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
     </svg>
   )},
+  { href: '/incidents', label: 'Report Incident', icon: (
+    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+    </svg>
+  )},
 ];
 
 function getStoredUser() {
   if (typeof window === 'undefined') return null;
 
-  const stored = localStorage.getItem('user');
-  const token = localStorage.getItem('token');
+  const stored = sessionStorage.getItem('user');
+  const token = sessionStorage.getItem('token');
   if (!stored || !token) return null;
 
   try {
     return JSON.parse(stored);
   } catch {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
     return null;
   }
 }
@@ -107,7 +124,6 @@ function NavItem({ href, label, icon, isActive, collapsed }) {
 
 export default function Layout({ children }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -116,9 +132,8 @@ export default function Layout({ children }) {
   const [notificationCount, setNotificationCount] = useState(0);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [logoutAnimating, setLogoutAnimating] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [allInventory, setAllInventory] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
@@ -162,16 +177,16 @@ export default function Layout({ children }) {
   }, []);
 
   useEffect(() => {
-    const querySearch = searchParams?.get('search') || '';
+    const querySearch = new URLSearchParams(window.location.search).get('search') || '';
     queueMicrotask(() => setSearchQuery(querySearch));
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   useEffect(() => {
     async function fetchInventoryAndNotifications() {
       if (!user) return;
 
       try {
-        const token = localStorage.getItem('token');
+        const token = sessionStorage.getItem('token');
         if (!token) return;
 
         const [invRes, txRes] = await Promise.all([
@@ -260,20 +275,30 @@ export default function Layout({ children }) {
   }, []);
 
   const handleLogoutConfirm = useCallback(() => {
+    setShowLogoutConfirm(false);
     setLoggingOut(true);
-    setLogoutAnimating(true);
+    const storedUser = getStoredUser();
+    const token = sessionStorage.getItem('token') || '';
+    if (storedUser) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          user_id: storedUser.user_id,
+          username: storedUser.username,
+        }),
+      }).catch(() => {});
+    }
     setTimeout(() => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       router.push('/login');
     }, 1200);
   }, [router]);
-
-  const handleLogoutCancel = useCallback(() => {
-    setLoggingOut(false);
-    setLogoutAnimating(false);
-    setShowLogoutConfirm(false);
-  }, []);
 
   const toggleCollapse = useCallback(() => {
     setCollapsed(prev => {
@@ -327,7 +352,17 @@ export default function Layout({ children }) {
             className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg text-[#8fb3d4] hover:bg-[#234b73] hover:text-white transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M3 6h18M3 12h18M3 18h18"/>
+              {collapsed ? (
+                <>
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="9" y1="3" x2="9" y2="21" />
+                </>
+              ) : (
+                <>
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="9" y1="3" x2="9" y2="21" />
+                </>
+              )}
             </svg>
           </button>
         </div>
@@ -539,62 +574,35 @@ export default function Layout({ children }) {
         </main>
       </div>
 
-      {/* Logout Confirmation Modal */}
+      {/* Logout Confirmation */}
       {showLogoutConfirm && (
-        <div
-          className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 transition-all duration-300 ease-out ${
-            logoutAnimating ? 'opacity-0' : 'opacity-100'
-          }`}
-        >
-          <div
-            className={`bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6 transition-all duration-300 ease-out ${
-              logoutAnimating
-                ? 'opacity-0 translate-y-4 scale-90'
-                : 'opacity-100 translate-y-0 scale-100'
-            }`}
-          >
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-2 mb-3">
-                {loggingOut ? (
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-                  </span>
-                ) : null}
-                <h3 className="text-base font-semibold text-gray-900">
-                  {loggingOut ? 'Logging out...' : 'Log out'}
-                </h3>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">
-                {loggingOut
-                  ? `Signing out ${user?.full_name}...`
-                  : `Are you sure you want to sign out of your account?`}
-              </p>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6">
+            <h3 className="text-base font-semibold text-gray-900">Log out</h3>
+            <p className="text-sm text-gray-500 mt-2">Are you sure you want to sign out of your account?</p>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogoutConfirm}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Confirm
+              </button>
             </div>
-
-            {!loggingOut && (
-              <div className="flex gap-2 mt-5">
-                <button
-                  onClick={handleLogoutCancel}
-                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleLogoutConfirm}
-                  className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
-                >
-                  Confirm
-                </button>
-              </div>
-            )}
-
-            {loggingOut && (
-              <div className="flex justify-center mt-5">
-                <div className="w-5 h-5 border-2 border-red-200 border-t-red-500 rounded-full animate-spin" />
-              </div>
-            )}
           </div>
+        </div>
+      )}
+
+      {/* Logout Overlay */}
+      {loggingOut && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-10 h-10 border-3 border-white/20 border-t-white rounded-full animate-spin mb-4" />
+          <p className="text-white text-sm font-medium">Logging out...</p>
         </div>
       )}
     </div>

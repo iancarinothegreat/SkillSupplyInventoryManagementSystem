@@ -1,7 +1,7 @@
-'use client';
+  'use client';
 import { useState, useEffect, useCallback } from 'react';
-import Layout from '../../components/Layout';
 import KpiCard from '../../components/KpiCard';
+import { SkeletonKpiCard, SkeletonCard } from '../../components/Skeleton';
 
 export default function MyRequisitionsPage() {
   const [requisitions, setRequisitions] = useState([]);
@@ -21,7 +21,7 @@ export default function MyRequisitionsPage() {
 
   const fetchMyRequisitions = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/requests', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -38,7 +38,7 @@ export default function MyRequisitionsPage() {
 
   const fetchInventory = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/inventory', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -53,12 +53,28 @@ export default function MyRequisitionsPage() {
     fetchInventory();
   }, [fetchMyRequisitions, fetchInventory]);
 
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchMyRequisitions();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchMyRequisitions]);
+
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'requisition-updated') fetchMyRequisitions();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [fetchMyRequisitions]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/requests', {
         method: 'POST',
         headers: {
@@ -73,8 +89,10 @@ export default function MyRequisitionsPage() {
         setShowModal(false);
         setForm({ item_id: '', quantity: '', purpose: '' });
         fetchMyRequisitions();
+        setTimeout(() => setSuccess(''), 5000);
       } else {
         setError(data.message || 'Failed to submit request.');
+        setTimeout(() => setError(''), 5000);
       }
     } catch (err) {
       setError('Server error.');
@@ -101,8 +119,7 @@ export default function MyRequisitionsPage() {
   };
 
   return (
-    <Layout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -126,7 +143,9 @@ export default function MyRequisitionsPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
-          {[
+          {loading ? (
+            Array.from({ length: 3 }).map((_, i) => <SkeletonKpiCard key={i} />)
+          ) : [
             { label: 'Pending', value: counts.Pending },
             { label: 'Approved', value: counts.Approved },
             { label: 'Rejected', value: counts.Rejected },
@@ -152,7 +171,11 @@ export default function MyRequisitionsPage() {
 
         {/* Requisitions */}
         {loading ? (
-          <div className="p-8 text-center text-gray-400">Loading your requests...</div>
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-12 text-center">
             <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3">
@@ -161,7 +184,7 @@ export default function MyRequisitionsPage() {
               </svg>
             </div>
             <p className="text-gray-500 font-medium">No requests found</p>
-            <p className="text-gray-400 text-sm mt-1">Click "New Request" to submit a supply request</p>
+            <p className="text-gray-400 text-sm mt-1">Click &quot;New Request&quot; to submit a supply request</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -179,7 +202,7 @@ export default function MyRequisitionsPage() {
                   <div className="text-right">
                     <p className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
                     {r.remarks && (
-                      <p className="text-xs text-gray-500 mt-1 italic">"{r.remarks}"</p>
+                      <p className="text-xs text-gray-500 mt-1 italic">&quot;{r.remarks}&quot;</p>
                     )}
                   </div>
                 </div>
@@ -199,7 +222,6 @@ export default function MyRequisitionsPage() {
             ))}
           </div>
         )}
-      </div>
 
       {/* New Request Modal */}
       {showModal && (
@@ -255,6 +277,6 @@ export default function MyRequisitionsPage() {
           </div>
         </div>
       )}
-    </Layout>
+      </div>
   );
 }

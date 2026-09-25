@@ -33,6 +33,7 @@ const roleBadge = (roleId) => {
 
 const STATS_CONFIG = [
   { label: 'Total Users', filter: () => true },
+  { label: 'Administrators', filter: (u) => u.role_id === 3 },
   { label: 'Supply Officers', filter: (u) => u.role_id === 2 },
   { label: 'Division Staff', filter: (u) => u.role_id === 1 },
 ];
@@ -61,10 +62,12 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
 
   const fetchUsers = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/users', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -83,7 +86,7 @@ export default function UsersPage() {
 
   const fetchDivisions = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/divisions', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -129,12 +132,26 @@ export default function UsersPage() {
     return () => window.removeEventListener('global-search', onGlobalSearch);
   }, []);
 
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const method = editingUser ? 'PUT' : 'POST';
       const res = await fetch('/api/users', {
         method,
@@ -161,27 +178,33 @@ export default function UsersPage() {
     }
   };
 
-  const handleDelete = async (user) => {
-    if (!confirm(`Delete account "${user.username}"? This will remove the account but preserve historical records. Continue?`)) return;
+  const handleDeleteClick = (user) => {
+    setUserToDelete(user);
+    setShowDeleteModal(true);
+  };
 
-    setDeletingUserId(user.user_id);
+  const handleDelete = async () => {
+    if (!userToDelete) return;
+
+    setShowDeleteModal(false);
+    setDeletingUserId(userToDelete.user_id);
     setError('');
     setSuccess('');
 
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/users', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ user_id: user.user_id }),
+        body: JSON.stringify({ user_id: userToDelete.user_id }),
       });
       const data = await res.json();
 
       if (res.ok) {
-        setSuccess(`User "${user.username}" was deleted permanently.`);
+        setSuccess(`User "${userToDelete.username}" was deleted permanently.`);
         fetchUsers();
       } else {
         setError(data.error || 'Failed to delete user.');
@@ -190,6 +213,7 @@ export default function UsersPage() {
       setError('Network error while deleting the user.');
     } finally {
       setDeletingUserId(null);
+      setUserToDelete(null);
     }
   };
 
@@ -200,8 +224,7 @@ export default function UsersPage() {
   );
 
   return (
-    <Layout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -224,10 +247,19 @@ export default function UsersPage() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          {STATS_CONFIG.map((s) => (
-            <KpiCard key={s.label} label={s.label} value={users.filter(s.filter).length} />
-          ))}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {loading ? (
+            [...Array(4)].map((_, i) => (
+              <div key={`kpi-skeleton-${i}`} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
+                <div className="h-3 bg-gray-200 rounded w-24 animate-pulse" />
+                <div className="h-8 bg-gray-200 rounded w-12 animate-pulse" />
+              </div>
+            ))
+          ) : (
+            STATS_CONFIG.map((s) => (
+              <KpiCard key={s.label} label={s.label} value={users.filter(s.filter).length} />
+            ))
+          )}
         </div>
 
         {/* Search */}
@@ -244,7 +276,44 @@ export default function UsersPage() {
         {/* Users Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {loading ? (
-            <div className="p-8 text-center text-gray-400">Loading users...</div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-100">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {TABLE_HEADERS.map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {[...Array(5)].map((_, i) => (
+                    <tr key={`skeleton-${i}`}>
+                      <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-8 animate-pulse" /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-gray-200 animate-pulse" />
+                          <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-32 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-40 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-24 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-5 bg-gray-200 rounded-full w-20 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-28 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-20 animate-pulse" /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="h-4 bg-gray-200 rounded w-10 animate-pulse" />
+                          <div className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : filteredUsers.length === 0 ? (
             <div className="p-8 text-center text-gray-400">No users found.</div>
           ) : (
@@ -290,7 +359,7 @@ export default function UsersPage() {
                             Edit
                           </button>
                           <button
-                            onClick={() => handleDelete(u)}
+                            onClick={() => handleDeleteClick(u)}
                             disabled={deletingUserId === u.user_id}
                             className="text-red-600 hover:text-red-800 font-medium text-xs uppercase tracking-wide disabled:opacity-50"
                           >
@@ -305,16 +374,15 @@ export default function UsersPage() {
             </div>
           )}
         </div>
-      </div>
 
       {/* Add / Edit User Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="p-6 border-b border-gray-100">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[65vh]">
+            <div className="p-6 border-b border-gray-100 shrink-0">
               <h2 className="text-lg font-semibold text-gray-900">{editingUser ? 'Edit User' : 'Create New User'}</h2>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 pb-4">
               {error && (
                 <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
               )}
@@ -396,14 +464,16 @@ export default function UsersPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
                 <input
                   type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={form.contact}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = e.target.value.replace(/\D/g, '');
                     if (val.length <= 11) setForm({ ...form, contact: val });
                   }}
                   maxLength={11}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0917 123 4567"
+                  placeholder="09171234567"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -434,26 +504,56 @@ export default function UsersPage() {
                   </select>
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
-                >
-                  {submitting ? (editingUser ? 'Updating...' : 'Creating...') : (editingUser ? 'Update User' : 'Create User')}
-                </button>
-              </div>
             </form>
+            <div className="flex gap-3 p-6 pt-0 border-t border-gray-100 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                onClick={handleSubmit}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
+              >
+                {submitting ? (editingUser ? 'Updating...' : 'Creating...') : (editingUser ? 'Update User' : 'Create User')}
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </Layout>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && userToDelete && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="p-6 text-center">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete User Account</h3>
+              <p className="text-sm text-gray-500 mb-1">
+                Are you sure you want to delete <span className="font-medium text-gray-700">&quot;{userToDelete.username}&quot;</span>?
+              </p>
+              <p className="text-xs text-gray-400">This will remove the account but preserve historical records.</p>
+            </div>
+            <div className="flex gap-3 px-6 pb-6">
+              <button
+                onClick={() => { setShowDeleteModal(false); setUserToDelete(null); }}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
   );
 }

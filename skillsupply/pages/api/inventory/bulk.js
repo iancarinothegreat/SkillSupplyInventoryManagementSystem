@@ -21,7 +21,7 @@ async function handler(req, res) {
       `);
       try {
         await query(`
-          INSERT INTO audit_log (user_id, action_type, affected_table, new_value)
+          INSERT INTO audit_log (user_id, action, table_name, new_values)
           VALUES ($1,'BULK_UPDATE','inventory_items',$2)
         `, [decoded.user_id, JSON.stringify({ action: 'set_non_returnable', count: result.rowCount })]);
       } catch {}
@@ -43,7 +43,7 @@ async function handler(req, res) {
       `);
       try {
         await query(`
-          INSERT INTO audit_log (user_id, action_type, affected_table, new_value)
+          INSERT INTO audit_log (user_id, action, table_name, new_values)
           VALUES ($1,'BULK_DELETE','inventory_items',$2)
         `, [decoded.user_id, JSON.stringify({ action: 'delete_all', count: result.rowCount })]);
       } catch {}

@@ -239,12 +239,14 @@ export default function SignupPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Contact Number</label>
               <input
                 type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={contact}
                 onChange={(e) => {
-                  const val = e.target.value;
+                  const val = e.target.value.replace(/\D/g, '');
                   if (val.length <= 11) setContact(val);
                 }}
-                placeholder="0917 123 4567 (optional)"
+                placeholder="09171234567 (optional)"
                 maxLength={11}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
               />

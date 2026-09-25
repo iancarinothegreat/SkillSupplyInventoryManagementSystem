@@ -1,7 +1,8 @@
-'use client';
+  'use client';
 import { useState, useEffect, useCallback } from 'react';
-import Layout from '../../components/Layout';
 import KpiCard from '../../components/KpiCard';
+import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
+import { broadcastRequisitionUpdate } from '../../lib/events';
 
 export default function RequisitionsPage() {
   const [requisitions, setRequisitions] = useState([]);
@@ -15,7 +16,7 @@ export default function RequisitionsPage() {
 
   const fetchRequisitions = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/requests', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -34,12 +35,28 @@ export default function RequisitionsPage() {
     fetchRequisitions();
   }, [fetchRequisitions]);
 
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchRequisitions();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchRequisitions]);
+
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'requisition-updated') fetchRequisitions();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [fetchRequisitions]);
+
   const handleAction = async (id, action) => {
     setProcessing(id);
     setError('');
     setSuccess('');
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`/api/requests/${id}`, {
         method: 'PUT',
         headers: {
@@ -54,6 +71,8 @@ export default function RequisitionsPage() {
         setSelectedReq(null);
         setRemarks('');
         fetchRequisitions();
+        broadcastRequisitionUpdate();
+        setTimeout(() => setSuccess(''), 5000);
       } else {
         setError(data.message || 'Action failed.');
       }
@@ -83,8 +102,7 @@ export default function RequisitionsPage() {
   };
 
   return (
-    <Layout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Requisitions</h1>
@@ -104,7 +122,9 @@ export default function RequisitionsPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => <SkeletonKpiCard key={i} />)
+          ) : [
             { label: 'Total', value: counts.all },
             { label: 'Pending', value: counts.Pending },
             { label: 'Approved', value: counts.Approved },
@@ -132,7 +152,20 @@ export default function RequisitionsPage() {
         {/* Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {loading ? (
-            <div className="p-8 text-center text-gray-400">Loading requisitions...</div>
+            <table className="min-w-full divide-y divide-gray-100">
+              <thead className="bg-gray-50">
+                <tr>
+                  {['ID', 'Requested By', 'Division', 'Item', 'Qty', 'Purpose', 'Date', 'Status', 'Action'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} widths={['w-10', 'w-24', 'w-20', 'w-24', 'w-10', 'w-28', 'w-20', 'w-16', 'w-14']} className="border-b border-gray-50" />
+                ))}
+              </tbody>
+            </table>
           ) : filtered.length === 0 ? (
             <div className="p-8 text-center text-gray-400">No requisitions found.</div>
           ) : (
@@ -177,7 +210,6 @@ export default function RequisitionsPage() {
             </div>
           )}
         </div>
-      </div>
 
       {/* Review Modal */}
       {selectedReq && (
@@ -230,6 +262,6 @@ export default function RequisitionsPage() {
           </div>
         </div>
       )}
-    </Layout>
+      </div>
   );
 }

@@ -1,7 +1,8 @@
 -- Migration: Add borrower_name to borrow_transactions
 -- Run this in your Supabase SQL Editor or via psql
 
-ALTER TABLE borrow_transactions ADD COLUMN borrower_name VARCHAR(150) NOT NULL DEFAULT '';
+ALTER TABLE borrow_transactions
+  ADD COLUMN IF NOT EXISTS borrower_name VARCHAR(150) NOT NULL DEFAULT '';
 
 -- Update existing rows that have a user_id to populate borrower_name from users table
 UPDATE borrow_transactions bt

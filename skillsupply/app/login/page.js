@@ -1,14 +1,11 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 
-const DEMO_ACCOUNTS = [
-  { role: 'Administrator', username: 'admin', color: 'text-yellow-700', bg: 'bg-yellow-50 border-yellow-200', userColor: 'text-yellow-600' },
-  { role: 'Supply Officer', username: 'supplyofficer', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', userColor: 'text-blue-500' },
-  { role: 'Division Staff', username: 'divstaff1', color: 'text-gray-700', bg: 'bg-white border-gray-200', userColor: 'text-gray-500' },
-];
+const MAX_ATTEMPTS = 3;
+const LOCKOUT_SECONDS = 60;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,9 +14,47 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const [lockoutEnd, setLockoutEnd] = useState(0);
+  const [remaining, setRemaining] = useState(0);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    const savedAttempts = parseInt(sessionStorage.getItem('login_attempts') || '0', 10);
+    const savedLockoutEnd = parseInt(sessionStorage.getItem('login_lockout_end') || '0', 10);
+    setAttempts(savedAttempts);
+    if (savedLockoutEnd > Date.now()) {
+      setLockoutEnd(savedLockoutEnd);
+    } else {
+      sessionStorage.removeItem('login_lockout_end');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (lockoutEnd <= 0) {
+      setRemaining(0);
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+    const tick = () => {
+      const secs = Math.max(0, Math.ceil((lockoutEnd - Date.now()) / 1000));
+      setRemaining(secs);
+      if (secs <= 0) {
+        clearInterval(timerRef.current);
+        setLockoutEnd(0);
+        sessionStorage.removeItem('login_lockout_end');
+      }
+    };
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [lockoutEnd]);
+
+  const isLocked = remaining > 0;
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (isLocked) return;
     setLoading(true);
     setError('');
     try {
@@ -30,11 +65,26 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        router.push('/dashboard');
+        sessionStorage.removeItem('login_attempts');
+        sessionStorage.removeItem('login_lockout_end');
+        sessionStorage.setItem('token', data.token);
+        sessionStorage.setItem('user', JSON.stringify(data.user));
+        const dest = data.user.hierarchy_level >= 2 ? '/dashboard' : '/my-requisitions';
+        router.push(dest);
       } else {
-        setError(data.message || 'Invalid username or password.');
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
+        sessionStorage.setItem('login_attempts', String(newAttempts));
+        if (newAttempts >= MAX_ATTEMPTS) {
+          const end = Date.now() + LOCKOUT_SECONDS * 1000;
+          setLockoutEnd(end);
+          sessionStorage.setItem('login_lockout_end', String(end));
+          setAttempts(0);
+          sessionStorage.setItem('login_attempts', '0');
+          setError(`Too many failed attempts. Please wait ${LOCKOUT_SECONDS} seconds.`);
+        } else {
+          setError(data.message || `Invalid username or password. ${MAX_ATTEMPTS - newAttempts} attempt(s) remaining.`);
+        }
       }
     } catch (err) {
       setError('Connection error. Please try again.');
@@ -42,17 +92,6 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-
-  const quickLogin = (uname) => {
-    setUsername(uname);
-    setPassword(
-      uname === 'admin' ? 'Admin@1234' :
-      uname === 'supplyofficer' ? 'Supply@1234' :
-      'Staff@1234'
-    );
-    setError('');
-  };
-
 
   return (
     <div className="min-h-screen flex">
@@ -106,8 +145,21 @@ export default function LoginPage() {
             <p className="text-sm text-gray-500 mt-1">Enter your credentials to continue</p>
           </div>
 
+          {/* Lockout Banner */}
+          {isLocked && (
+            <div className="mb-4 bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg text-sm flex items-center gap-3">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <div>
+                <p className="font-medium">Account temporarily locked</p>
+                <p className="text-xs mt-0.5">Too many failed attempts. Try again in <span className="font-bold text-amber-900">{remaining}s</span></p>
+              </div>
+            </div>
+          )}
+
           {/* Error */}
-          {error && (
+          {error && !isLocked && (
             <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
             </div>
@@ -130,7 +182,8 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Enter username"
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
+                  disabled={isLocked}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -150,13 +203,15 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"
-                  className="w-full pl-10 pr-14 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
+                  disabled={isLocked}
+                  className="w-full pl-10 pr-14 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
 
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"
+                  disabled={isLocked}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? (
@@ -196,15 +251,15 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || isLocked}
               className="w-full py-3 bg-[#1a3a5c] text-white rounded-xl text-sm font-semibold hover:bg-[#15304f] disabled:opacity-60 transition mt-2"
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {isLocked ? `Locked — ${remaining}s` : loading ? 'Signing in...' : 'Sign In'}
             </button>
 
-            <div className="mt-3 text-center">
+            <div className="mt-3">
               <Link href="/forgot-password" className="text-sm font-medium text-[#1a3a5c] hover:underline">
-                Forgot password?
+                Forgot your password?
               </Link>
             </div>
 
@@ -215,28 +270,6 @@ export default function LoginPage() {
               Create New Account
             </Link>
           </form>
-
-          {/* Divider */}
-          <div className="my-7 border-t border-gray-200" />
-
-          {/* Demo Quick Login */}
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-              Demo Quick Login
-            </p>
-            <div className="space-y-2">
-              {DEMO_ACCOUNTS.map((account) => (
-                <button
-                  key={account.username}
-                  onClick={() => quickLogin(account.username)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm font-medium transition hover:opacity-80 ${account.bg}`}
-                >
-                  <span className={account.color}>{account.role}</span>
-                  <span className={`font-mono text-xs ${account.userColor}`}>{account.username}</span>
-                </button>
-              ))}
-            </div>
-          </div>
 
         </div>
       </div>

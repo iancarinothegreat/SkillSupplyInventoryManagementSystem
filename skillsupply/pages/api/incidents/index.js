@@ -47,6 +47,12 @@ async function handler(req, res) {
         VALUES ($1, $2, COALESCE($3, CURRENT_DATE), $4, $5, $6, $7, $8)
         RETURNING *
       `, [item_id || null, incident_type, incident_date || null, req.user.user_id, quantity, description.trim(), req.user.hierarchy_level >= 2 ? investigation_remarks?.trim() || null : null, req.user.hierarchy_level >= 2 && status && INCIDENT_STATUSES.includes(status) ? status : 'Open']);
+
+      await db.query(`
+        INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
+        VALUES ($1,'CREATE','incident_reports',$2,$3)
+      `, [req.user.user_id, result.rows[0].incident_id, JSON.stringify(result.rows[0])]);
+
       return res.status(201).json(result.rows[0]);
     } catch (err) {
       console.error('Incident create error:', err);
@@ -60,6 +66,9 @@ async function handler(req, res) {
     if (!incident_id || !INCIDENT_STATUSES.includes(status)) return res.status(400).json({ error: 'Valid incident ID and status are required.' });
 
     try {
+      const existing = await db.query('SELECT * FROM incident_reports WHERE incident_id=$1', [incident_id]);
+      const previous = existing.rows[0] || null;
+
       const result = await db.query(`
         UPDATE incident_reports
         SET status = $1, investigation_remarks = $2, reviewed_by = $3, reviewed_at = NOW()
@@ -67,6 +76,12 @@ async function handler(req, res) {
         RETURNING *
       `, [status, investigation_remarks?.trim() || null, req.user.user_id, incident_id]);
       if (result.rows.length === 0) return res.status(404).json({ error: 'Incident not found.' });
+
+      await db.query(`
+        INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
+        VALUES ($1,'UPDATE','incident_reports',$2,$3,$4)
+      `, [req.user.user_id, incident_id, previous ? JSON.stringify({ status: previous.status }) : null, JSON.stringify(result.rows[0])]);
+
       return res.status(200).json(result.rows[0]);
     } catch (err) {
       console.error('Incident update error:', err);

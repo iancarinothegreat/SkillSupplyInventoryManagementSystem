@@ -95,10 +95,11 @@ function getReportTitle(report) {
 
 async function generateInventoryReport(doc, db) {
   const { rows } = await db.query(`
-    SELECT i.id, i.name, c.name AS category, i.quantity, i.unit, i.reorder_point
+    SELECT i.item_id AS id, i.item_name AS name, c.category_name AS category,
+           i.quantity_on_hand AS quantity, i.unit_of_measure AS unit, i.reorder_level AS reorder_point
     FROM inventory_items i
-    LEFT JOIN categories c ON i.category_id = c.id
-    ORDER BY c.name, i.name
+    LEFT JOIN categories c ON i.category_id = c.category_id
+    ORDER BY c.category_name, i.item_name
   `);
 
   doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text('Inventory Summary', { underline: true });
@@ -148,10 +149,11 @@ async function generateInventoryReport(doc, db) {
 
 async function generateTransactionReport(doc, db, from, to) {
   let query = `
-    SELECT bt.id, i.name AS item_name, bt.borrower_name, bt.borrower_division,
-           bt.quantity, bt.borrow_date, bt.expected_return_date, bt.status
+    SELECT bt.borrow_id AS id, i.item_name, bt.borrower_name, d.division_name AS borrower_division,
+           bt.quantity_borrowed AS quantity, bt.borrow_date, bt.expected_return_date, bt.status
     FROM borrow_transactions bt
-    LEFT JOIN inventory_items i ON bt.item_id = i.id
+    LEFT JOIN inventory_items i ON bt.item_id = i.item_id
+    LEFT JOIN divisions d ON bt.division_id = d.division_id
     WHERE 1=1
   `;
   const params = [];
@@ -210,11 +212,12 @@ async function generateTransactionReport(doc, db, from, to) {
 
 async function generateLowStockReport(doc, db) {
   const { rows } = await db.query(`
-    SELECT i.id, i.name, c.name AS category, i.quantity, i.reorder_point, i.unit
+    SELECT i.item_id AS id, i.item_name AS name, c.category_name AS category,
+           i.quantity_on_hand AS quantity, i.reorder_level AS reorder_point, i.unit_of_measure AS unit
     FROM inventory_items i
-    LEFT JOIN categories c ON i.category_id = c.id
-    WHERE i.quantity <= i.reorder_point
-    ORDER BY i.quantity ASC
+    LEFT JOIN categories c ON i.category_id = c.category_id
+    WHERE i.quantity_on_hand <= i.reorder_level
+    ORDER BY i.quantity_on_hand ASC
   `);
 
   doc.fontSize(11).font('Helvetica-Bold').fillColor('#dc2626').text('⚠ Low Stock Alert', { underline: true });
@@ -259,11 +262,11 @@ async function generateLowStockReport(doc, db) {
 
 async function generateConsumptionReport(doc, db, from, to) {
   let query = `
-    SELECT i.name AS item_name, COUNT(*) AS times_borrowed,
-           SUM(bt.quantity) AS total_borrowed,
-           SUM(CASE WHEN bt.status = 'Returned' THEN bt.quantity ELSE 0 END) AS total_returned
+    SELECT i.item_name AS item_name, COUNT(*) AS times_borrowed,
+           SUM(bt.quantity_borrowed) AS total_borrowed,
+           SUM(CASE WHEN bt.status = 'Returned' THEN bt.quantity_borrowed ELSE 0 END) AS total_returned
     FROM borrow_transactions bt
-    LEFT JOIN inventory_items i ON bt.item_id = i.id
+    LEFT JOIN inventory_items i ON bt.item_id = i.item_id
     WHERE 1=1
   `;
   const params = [];
@@ -275,7 +278,7 @@ async function generateConsumptionReport(doc, db, from, to) {
     params.push(to);
     query += ` AND bt.borrow_date <= $${params.length}`;
   }
-  query += ' GROUP BY i.name ORDER BY total_borrowed DESC';
+  query += ' GROUP BY i.item_name ORDER BY total_borrowed DESC';
 
   const { rows } = await db.query(query, params);
 

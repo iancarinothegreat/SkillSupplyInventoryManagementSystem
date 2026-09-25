@@ -39,6 +39,10 @@ TEMP/
 temp/
 *.bak
 
+# Local AI/editor configuration
+.claude/
+.continue/
+
 # Uploads (but keep the directory structure)
 public/uploads/avatars/*
 !public/uploads/avatars/.gitkeep

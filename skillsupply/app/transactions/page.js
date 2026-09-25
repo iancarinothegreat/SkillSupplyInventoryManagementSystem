@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Layout from '../../components/Layout';
 import KpiCard from '../../components/KpiCard';
+import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
@@ -12,6 +12,8 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [showBorrowModal, setShowBorrowModal] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedTx, setSelectedTx] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -37,7 +39,7 @@ export default function TransactionsPage() {
 
   const fetchTransactions = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/transactions', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -52,7 +54,7 @@ export default function TransactionsPage() {
   const fetchInventory = useCallback(async () => {
 
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/inventory', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -64,7 +66,7 @@ export default function TransactionsPage() {
 
   const fetchDivisions = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/divisions', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -95,12 +97,18 @@ export default function TransactionsPage() {
     return () => window.removeEventListener('global-search', onGlobalSearch);
   }, []);
 
+  useEffect(() => {
+    if (!success) return;
+    const timer = setTimeout(() => setSuccess(''), 5000);
+    return () => clearTimeout(timer);
+  }, [success]);
+
   const handleBorrow = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/transactions/borrow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -130,11 +138,15 @@ export default function TransactionsPage() {
     setSubmitting(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/transactions/return', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(returnForm),
+        body: JSON.stringify({
+          borrow_id: returnForm.transaction_id,
+          condition_returned: returnForm.condition_on_return,
+          notes: returnForm.remarks,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -153,10 +165,11 @@ export default function TransactionsPage() {
     }
   };
 
-  const activeCount = transactions.filter(t => t.status === 'Borrowed').length;
+  const activeCount = transactions.filter(t => t.status === 'Borrowed' || t.status === 'Issued' || t.status === 'Overdue').length;
+  const borrowedCount = transactions.filter(t => t.status === 'Borrowed' || t.status === 'Issued').length;
   const overdueCount = transactions.filter(t => t.status === 'Overdue').length;
   const returnedCount = transactions.filter(t => t.status === 'Returned').length;
-  const pendingTransactions = transactions.filter(t => t.status === 'Borrowed');
+  const pendingTransactions = transactions.filter(t => t.status === 'Borrowed' || t.status === 'Issued' || t.status === 'Overdue');
 
   const filteredTransactions = transactions.filter(t => {
     const quantityText = String(t.quantity ?? t.quantity_borrowed ?? '');
@@ -167,7 +180,7 @@ export default function TransactionsPage() {
       divisionText.toLowerCase().includes(searchQuery.toLowerCase()) ||
       quantityText.includes(searchQuery);
 
-    const matchStatus = filterStatus === 'All Status' || t.status === filterStatus;
+    const matchStatus = filterStatus === 'All Status' || t.status === filterStatus || (filterStatus === 'Borrowed' && t.status === 'Issued');
     return matchSearch && matchStatus;
   });
 
@@ -193,19 +206,39 @@ export default function TransactionsPage() {
         </span>
       );
     }
+    if (status === 'Borrowed' || status === 'Issued') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Borrowed
+        </span>
+      );
+    }
+    if (status === 'Cancelled') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+          </svg>
+          Cancelled
+        </span>
+      );
+    }
     return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        Active
+        {status || 'Unknown'}
       </span>
     );
   };
 
   return (
-    <Layout>
-      <div className="space-y-6">
+    <>
+    <div className="space-y-6">
 
         {/* Page Header */}
         <div className="flex items-center justify-between">
@@ -230,14 +263,28 @@ export default function TransactionsPage() {
         </div>
 
         {success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{success}</div>
+          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm flex items-center justify-between">
+            <span>{success}</span>
+            <button onClick={() => setSuccess('')} className="ml-3 text-green-500 hover:text-green-700">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         )}
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-3 gap-4">
-          <KpiCard label="Active" value={activeCount} />
-          <KpiCard label="Overdue" value={overdueCount} />
-          <KpiCard label="Returned" value={returnedCount} />
+        <div className="grid grid-cols-4 gap-4">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => <SkeletonKpiCard key={i} />)
+          ) : (
+            <>
+              <KpiCard label="Active" value={activeCount} />
+              <KpiCard label="Borrowed" value={borrowedCount} />
+              <KpiCard label="Overdue" value={overdueCount} />
+              <KpiCard label="Returned" value={returnedCount} />
+            </>
+          )}
         </div>
 
         {/* Table Card */}
@@ -274,7 +321,20 @@ export default function TransactionsPage() {
 
           {/* Table */}
           {loading ? (
-            <div className="p-10 text-center text-gray-400">Loading transactions...</div>
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  {['ID', 'Item', 'Borrowed By', 'Quantity', 'Division', 'Borrow Date', 'Expected Return', 'Status', 'Actions'].map(h => (
+                    <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} widths={['w-10', 'w-28', 'w-24', 'w-12', 'w-20', 'w-24', 'w-24', 'w-16', 'w-14']} className="border-b border-gray-50" />
+                ))}
+              </tbody>
+            </table>
           ) : filteredTransactions.length === 0 ? (
             <div className="p-10 text-center text-gray-400">No transactions found.</div>
           ) : (
@@ -291,8 +351,8 @@ export default function TransactionsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredTransactions.map((t, idx) => (
-                    <tr key={t.id ?? `tx-${idx}`} className="hover:bg-gray-50 transition">
-                      <td className="px-6 py-4 text-sm text-gray-500">#{t.id}</td>
+                    <tr key={t.borrow_id ?? `tx-${idx}`} className="hover:bg-gray-50 transition">
+                      <td className="px-6 py-4 text-sm text-gray-500">#{t.borrow_id}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
@@ -320,16 +380,12 @@ export default function TransactionsPage() {
 
                       <td className="px-6 py-4">{statusBadge(t.status)}</td>
                       <td className="px-6 py-4 text-sm text-gray-400">
-                        {t.status === 'Borrowed' ? (
-                          <button
-                            onClick={() => { setReturnForm({ ...returnForm, transaction_id: String(t.id) }); setShowReturnModal(true); setError(''); }}
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                          >
-                            Return
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
+                        <button
+                          onClick={() => { setSelectedTx(t); setShowReviewModal(true); setError(''); }}
+                          className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium transition"
+                        >
+                          Review
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -467,7 +523,7 @@ export default function TransactionsPage() {
                 >
                   <option value="">Select transaction...</option>
                   {pendingTransactions.map((t) => (
-                    <option key={t.id} value={t.id}>#{t.id} — {t.item_name} · {t.borrower_name}</option>
+                    <option key={t.borrow_id} value={String(t.borrow_id)}>#{t.borrow_id} — {t.item_name} · {t.borrower_name} ({t.status})</option>
                   ))}
                 </select>
               </div>
@@ -502,7 +558,114 @@ export default function TransactionsPage() {
             </form>
           </div>
         </div>
+        )}
+
+      {/* Review Transaction Modal */}
+      {showReviewModal && selectedTx && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Transaction #{selectedTx.borrow_id}</h2>
+              <button onClick={() => { setShowReviewModal(false); setSelectedTx(null); }} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+              <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-gray-500">Item</span><span className="font-medium">{selectedTx.item_name}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Borrower</span><span>{selectedTx.borrower_name}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Division</span><span>{selectedTx.borrower_division ?? selectedTx.division_name}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Quantity</span><span>{selectedTx.quantity ?? selectedTx.quantity_borrowed}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Borrow Date</span><span>{new Date(selectedTx.borrow_date ?? selectedTx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Expected Return</span><span>{new Date(selectedTx.expected_return_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></div>
+                {selectedTx.actual_return_date && (
+                  <div className="flex justify-between"><span className="text-gray-500">Actual Return</span><span>{new Date(selectedTx.actual_return_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></div>
+                )}
+                {selectedTx.purpose && (
+                  <div className="flex justify-between"><span className="text-gray-500">Purpose</span><span className="text-right max-w-xs">{selectedTx.purpose}</span></div>
+                )}
+                <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                  <span className="text-gray-500">Status</span>
+                  {statusBadge(selectedTx.status)}
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      const token = sessionStorage.getItem('token');
+                      const res = await fetch(`/api/transactions/${selectedTx.borrow_id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ status: 'Borrowed' }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json();
+                        setError(data.error || 'Failed to update status.');
+                        return;
+                      }
+                      setTransactions(prev => prev.map(t =>
+                        t.borrow_id === selectedTx.borrow_id ? { ...t, status: 'Borrowed' } : t
+                      ));
+                      setSelectedTx(prev => prev ? { ...prev, status: 'Borrowed' } : prev);
+                      setShowReviewModal(false);
+                      setSuccess('Transaction reinstated as Borrowed.');
+                    } catch (err) { console.error(err); setError('Server error.'); }
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+                >
+                  Borrowed
+                </button>
+                {selectedTx.status !== 'Returned' && (
+                  <button
+                    onClick={() => {
+                      setShowReviewModal(false);
+                      setSelectedTx(null);
+                      setReturnForm({ ...returnForm, transaction_id: String(selectedTx.borrow_id) });
+                      setShowReturnModal(true);
+                      setError('');
+                    }}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition"
+                  >
+                    Returned
+                  </button>
+                )}
+                {selectedTx.status !== 'Overdue' && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const token = sessionStorage.getItem('token');
+                        const res = await fetch(`/api/transactions/${selectedTx.borrow_id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ status: 'Overdue' }),
+                        });
+                        if (!res.ok) {
+                          const data = await res.json();
+                          setError(data.error || 'Failed to update status.');
+                          return;
+                        }
+                        setTransactions(prev => prev.map(t =>
+                          t.borrow_id === selectedTx.borrow_id ? { ...t, status: 'Overdue' } : t
+                        ));
+                        setSelectedTx(prev => prev ? { ...prev, status: 'Overdue' } : prev);
+                        setShowReviewModal(false);
+                        setSuccess('Transaction marked as Overdue.');
+                      } catch (err) { console.error(err); setError('Server error.'); }
+                    }}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition"
+                  >
+                    Overdue
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
-    </Layout>
+    </>
   );
 }

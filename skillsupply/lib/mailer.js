@@ -27,7 +27,7 @@ export async function sendPasswordResetEmail({ to, fullName, resetUrl }) {
       <div style="padding: 24px; background: #f9fafb;">
         <p>Hi <strong>${fullName || 'there'}</strong>,</p>
         <p>We received a request to reset the password for your SkillSupply account. Click the button below to set a new password.</p>
-
+        
         <div style="text-align: center; margin: 28px 0;">
           <a href="${resetUrl}"
              style="background: #1a3a5c; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">

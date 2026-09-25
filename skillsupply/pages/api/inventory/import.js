@@ -1,4 +1,4 @@
-import { query } from '../../../lib/db.js';
+import pool, { query } from '../../../lib/db.js';
 import { withAuth } from '../../../lib/rbac.js';
 
 const FIELD_ALIASES = {
@@ -141,6 +141,13 @@ function normalizeRow(row) {
   const unit_of_measure = cleanText(getValue(row, 'unit_of_measure', [2]));
   const quantity_on_hand = toNumber(getValue(row, 'quantity_on_hand', [4, 3]), 0);
   const reorder_level = toNumber(getValue(row, 'reorder_level'), 10);
+  const defective_qty = toNumber(getValue(row, 'defective_qty', [6]), 0);
+  const is_returnable = (() => {
+    const val = getValue(row, 'is_returnable', [7]).toLowerCase();
+    if (['true', '1', 'yes', 'y'].includes(val)) return true;
+    if (['false', '0', 'no', 'n'].includes(val)) return false;
+    return false;
+  })();
   const unit_cost = toNumber(getValue(row, 'unit_cost', [3, 5]), 0);
   const category_name = cleanText(getValue(row, 'category_name'));
   const division_name = cleanText(getValue(row, 'division_name'));
@@ -151,6 +158,8 @@ function normalizeRow(row) {
     unit_of_measure,
     quantity_on_hand,
     reorder_level,
+    defective_qty,
+    is_returnable,
     unit_cost,
     category_name,
     division_name,
@@ -166,55 +175,89 @@ async function handler(req, res) {
   }
 
   try {
-    const inserted = [];
-    const skipped = [];
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    for (const row of rows) {
-      const item = normalizeRow(row);
-      if (!item.item_name) {
-        skipped.push({ rowNumber: row.__rowNumber, reason: 'Missing item name' });
-        continue;
+      const catResult = await client.query('SELECT category_id, LOWER(category_name) AS name FROM categories');
+      const divResult = await client.query('SELECT division_id, LOWER(division_name) AS name FROM divisions');
+      const catMap = new Map(catResult.rows.map(r => [r.name, r.category_id]));
+      const divMap = new Map(divResult.rows.map(r => [r.name, r.division_id]));
+
+      const inserted = [];
+      const skipped = [];
+      const validItems = [];
+
+      for (const row of rows) {
+        const item = normalizeRow(row);
+        if (!item.item_name) {
+          skipped.push({ rowNumber: row.__rowNumber, reason: 'Missing item name' });
+          continue;
+        }
+
+        const categoryId = item.category_name ? catMap.get(cleanText(item.category_name).toLowerCase()) ?? null : null;
+        const divisionId = item.division_name ? divMap.get(cleanText(item.division_name).toLowerCase()) ?? null : null;
+
+        validItems.push({ ...item, categoryId, divisionId });
       }
 
-      const categoryId = await findLookupId('categories', 'category_id', 'category_name', item.category_name);
-      const divisionId = await findLookupId('divisions', 'division_id', 'division_name', item.division_name);
+      if (validItems.length > 0) {
+        const chunkSize = 100;
+        for (let i = 0; i < validItems.length; i += chunkSize) {
+          const chunk = validItems.slice(i, i + chunkSize);
+          const values = [];
+          const params = [];
+          let paramIdx = 1;
 
-      const result = await query(
-        `
-          INSERT INTO inventory_items
-            (item_name, serial_number, category_id, division_id, unit_of_measure, quantity_on_hand, reorder_level, unit_cost, is_active)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)
-          RETURNING *
-        `,
-        [
-          item.item_name,
-          item.serial_number || null,
-          categoryId,
-          divisionId,
-          item.unit_of_measure,
-          item.quantity_on_hand,
-          item.reorder_level,
-          item.unit_cost,
-        ]
-      );
+          for (const item of chunk) {
+            values.push(`($${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},true)`);
+            params.push(
+              item.item_name, item.serial_number || null, item.categoryId, item.divisionId,
+              item.unit_of_measure, item.quantity_on_hand, item.reorder_level, item.unit_cost
+            );
+          }
 
-      inserted.push(result.rows[0]);
+          const result = await client.query(
+            `INSERT INTO inventory_items
+              (item_name, serial_number, category_id, division_id, unit_of_measure, quantity_on_hand, reorder_level, unit_cost, is_active)
+            VALUES ${values.join(',')}
+            RETURNING *`,
+            params
+          );
 
-      await query(
-        `
-          INSERT INTO audit_log (user_id, action_type, affected_table, affected_record_id, new_value)
-          VALUES ($1,'CREATE','inventory_items',$2,$3)
-        `,
-        [req.user.user_id, result.rows[0].item_id, JSON.stringify(result.rows[0])]
-      );
+          const auditValues = [];
+          const auditParams = [];
+          let auditIdx = 1;
+
+          for (const row of result.rows) {
+            auditValues.push(`($${auditIdx++},'CREATE','inventory_items',$${auditIdx++},$${auditIdx++})`);
+            auditParams.push(req.user.user_id, row.item_id, JSON.stringify(row));
+          }
+
+          await client.query(
+            `INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
+            VALUES ${auditValues.join(',')}`,
+            auditParams
+          );
+
+          inserted.push(...result.rows);
+        }
+      }
+
+      await client.query('COMMIT');
+
+      return res.status(200).json({
+        insertedCount: inserted.length,
+        skippedCount: skipped.length,
+        skipped,
+        inserted,
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-
-    return res.status(200).json({
-      insertedCount: inserted.length,
-      skippedCount: skipped.length,
-      skipped,
-      inserted,
-    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server error' });

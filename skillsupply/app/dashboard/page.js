@@ -1,59 +1,136 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Layout from '@/components/Layout';
+import { useRouter } from 'next/navigation';
 import KpiCard from '@/components/KpiCard';
-import { Bar } from 'react-chartjs-2';
+import { SkeletonKpiCard, SkeletonTableRow, SkeletonChart } from '@/components/Skeleton';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
+  ArcElement,
+  PointElement,
+  LineElement,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, Tooltip, Legend, Filler);
+
+const COLORS = {
+  blue: '#3b82f6',
+  green: '#10b981',
+  yellow: '#f59e0b',
+  red: '#ef4444',
+  purple: '#8b5cf6',
+  pink: '#ec4899',
+  cyan: '#06b6d4',
+  lime: '#84cc16',
+  orange: '#f97316',
+  indigo: '#6366f1'
+};
+
+const PIE_COLORS = [COLORS.blue, COLORS.green, COLORS.yellow, COLORS.red, COLORS.purple, COLORS.pink, COLORS.cyan, COLORS.lime];
+
+function formatCurrency(val) {
+  return `₱${Number(val || 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+function createTooltipConfig(unit = '') {
+  return {
+    callbacks: {
+      label: function(context) {
+        const label = context.dataset.label || '';
+        const value = context.parsed.y ?? context.parsed ?? 0;
+        const total = context.chart.data.datasets.reduce((sum, ds) => sum + ds.data.reduce((a, b) => a + b, 0), 0);
+        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+        return `${label}: ${value.toLocaleString()}${unit} (${percentage}%)`;
+      }
+    }
+  };
+}
+
+function createDoughnutTooltipConfig() {
+  return {
+    callbacks: {
+      label: function(context) {
+        const label = context.label || '';
+        const value = context.parsed || 0;
+        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+        return `${label}: ${value.toLocaleString()} (${percentage}%)`;
+      }
+    }
+  };
+}
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState({
-    totalItems: 0,
-    lowStockAlerts: 0,
-    overdueReturns: 0,
-    pendingRequests: 0,
-    totalInventoryValue: 0
-  });
-  const [recentTransactions, setRecentTransactions] = useState([]);
-  const [overdueReturns, setOverdueReturns] = useState([]);
-  const [divisionChart, setDivisionChart] = useState({ labels: [], datasets: [] });
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
-  useEffect(() => {
-    fetchDashboard();
+  // Filter state
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [filterDivision, setFilterDivision] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [divisions, setDivisions] = useState([]);
+  const [categories, setCategories] = useState([]);
 
-    const refreshOnFocus = () => {
-      if (document.visibilityState === 'visible') fetchDashboard({ silent: true });
-    };
-    const refreshInterval = setInterval(() => fetchDashboard({ silent: true }), 5000);
-    document.addEventListener('visibilitychange', refreshOnFocus);
+  // Data state
+  const [kpis, setKpis] = useState({
+    totalItems: 0,
+    lowStock: 0,
+    itemsOnLoan: 0,
+    totalTransactions: 0,
+    returnRate: 0,
+    totalValue: 0
+  });
+  const [divisionConsumption, setDivisionConsumption] = useState({ labels: [], datasets: [] });
+  const [divisionDetails, setDivisionDetails] = useState([]);
+  const [monthlyTrend, setMonthlyTrend] = useState({ labels: [], datasets: [] });
+  const [topItems, setTopItems] = useState({ labels: [], datasets: [] });
+  const [categoryChart, setCategoryChart] = useState({ labels: [], datasets: [] });
+  const [stockStatusChart, setStockStatusChart] = useState({ labels: [], datasets: [] });
+  const [requisitionChart, setRequisitionChart] = useState({ labels: [], datasets: [] });
+  const [divisionDetailsChart, setDivisionDetailsChart] = useState({ labels: [], datasets: [] });
+  const [recentTransactions, setRecentTransactions] = useState([]);
 
-    return () => {
-      clearInterval(refreshInterval);
-      document.removeEventListener('visibilitychange', refreshOnFocus);
-    };
-  }, []);
+  async function fetchFilters() {
+    const token = sessionStorage.getItem('token');
+    const headers = { Authorization: `Bearer ${token}` };
+    try {
+      const [divRes, catRes] = await Promise.all([
+        fetch('/api/public/divisions', { headers }),
+        fetch('/api/categories', { headers })
+      ]);
+      const divData = await divRes.json();
+      const catData = await catRes.json();
+      setDivisions(Array.isArray(divData) ? divData : []);
+      setCategories(Array.isArray(catData) ? catData : (catData.categories || []));
+    } catch (e) {
+      console.error('Filter fetch error:', e);
+    }
+  }
 
   async function fetchDashboard({ silent = false } = {}) {
     if (!silent) setLoading(true);
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const headers = { Authorization: `Bearer ${token}` };
 
     try {
-      const [invRes, txRes, reqRes, consumptionRes] = await Promise.all([
-        fetch('/api/inventory', { headers }),
-        fetch('/api/transactions', { headers }),
-        fetch('/api/requests', { headers }),
-        fetch('/api/dashboard/consumption', { headers })
+      const params = new URLSearchParams();
+      if (dateFrom) params.append('from', dateFrom);
+      if (dateTo) params.append('to', dateTo);
+      if (filterDivision) params.append('division_id', filterDivision);
+      if (filterCategory) params.append('category_id', filterCategory);
+
+      const [analyticsRes, txRes] = await Promise.all([
+        fetch(`/api/dashboard/analytics?${params.toString()}`, { headers }),
+        fetch('/api/transactions', { headers })
       ]);
 
       const safeJson = async (res) => {
@@ -61,203 +138,451 @@ export default function DashboardPage() {
         try { return JSON.parse(text); } catch { return {}; }
       };
 
-      const invData = await safeJson(invRes);
+      const analytics = await safeJson(analyticsRes);
       const txData = await safeJson(txRes);
-      const reqData = await safeJson(reqRes);
-      const consumptionData = await safeJson(consumptionRes);
 
-      if (!Array.isArray(consumptionData) || consumptionData.length === 0) {
-        setDivisionChart({
-          labels: ['No Data'],
-          datasets: [
-            { label: 'Issued', data: [0], backgroundColor: '#1e40af', borderRadius: 4 },
-            { label: 'Returned', data: [0], backgroundColor: '#16a34a', borderRadius: 4 }
-          ]
+      if (analytics.kpis) {
+        setKpis({
+          totalItems: analytics.kpis.totalItems,
+          lowStock: analytics.kpis.lowStock,
+          itemsOnLoan: analytics.kpis.itemsOnLoan,
+          totalTransactions: analytics.kpis.totalTransactions,
+          returnRate: analytics.kpis.returnRate,
+          totalValue: analytics.kpis.totalValue
         });
       }
 
-      // Normalize inventory API response
-      let itemsRaw = [];
-      if (Array.isArray(invData)) itemsRaw = invData;
-      else if (invData && Array.isArray(invData.items)) itemsRaw = invData.items;
-
-      const items = itemsRaw.map(i => ({
-        id: i.item_id ?? i.id ?? i.itemId,
-        name: i.item_name ?? i.name ?? i.itemName,
-        quantity: i.quantity_on_hand ?? i.quantity ?? i.qty ?? 0,
-        reorder_point: i.reorder_level ?? i.reorder_point ?? i.reorderLevel ?? 10,
-        unit_price: i.unit_cost ?? i.unit_price ?? i.price ?? 0,
-        category_name: i.category_name ?? i.category ?? null,
-        division_name: i.division_name ?? i.division ?? null,
-        stock_status: i.stock_status ?? null
-      }));
-
-      const transactions = (txData && Array.isArray(txData.transactions)) ? txData.transactions : (Array.isArray(txData) ? txData : []);
-      const requests = (reqData && Array.isArray(reqData.requests)) ? reqData.requests : (Array.isArray(reqData) ? reqData : []);
-
-      // KPI calculations
-      const lowStock = items.filter(i => i.quantity <= i.reorder_point).length;
-      const totalValue = items.reduce((sum, i) => sum + (parseFloat(i.unit_price || 0) * parseInt(i.quantity || 0)), 0);
-      const pending = requests.filter(r => (r.status || '').toLowerCase() === 'pending').length;
-
-      const now = new Date();
-      const overdue = transactions.filter(tx => {
-        if (tx.status !== 'borrowed') return false;
-        const borrowed = new Date(tx.borrow_date || tx.created_at);
-        const diffDays = (now - borrowed) / (1000 * 60 * 60 * 24);
-        return diffDays > 7;
-      });
-
-      setStats({
-        totalItems: items.length,
-        lowStockAlerts: lowStock,
-        overdueReturns: overdue.length,
-        pendingRequests: pending,
-        totalInventoryValue: totalValue
-      });
-
-      setOverdueReturns(overdue.slice(0, 5));
-      setRecentTransactions(transactions.slice(0, 10));
-
-      // Division-wise consumption chart from API
-      if (Array.isArray(consumptionData) && consumptionData.length > 0) {
-        setDivisionChart({
-          labels: consumptionData.map(d => d.division),
+      // Division consumption chart
+      if (analytics.divisionConsumption && analytics.divisionConsumption.length > 0) {
+        setDivisionConsumption({
+          labels: analytics.divisionConsumption.map(d => d.division),
           datasets: [
             {
               label: 'Issued',
-              data: consumptionData.map(d => d.issued),
-              backgroundColor: '#1e40af',
+              data: analytics.divisionConsumption.map(d => d.issued),
+              backgroundColor: COLORS.blue,
               borderRadius: 4
             },
             {
               label: 'Returned',
-              data: consumptionData.map(d => d.returned),
-              backgroundColor: '#16a34a',
+              data: analytics.divisionConsumption.map(d => d.returned),
+              backgroundColor: COLORS.green,
               borderRadius: 4
             }
           ]
         });
       }
 
+      setDivisionDetails(analytics.divisionDetails || []);
+
+      // Division details chart (horizontal bar - normalized percentages)
+      if (analytics.divisionDetails && analytics.divisionDetails.length > 0) {
+        const maxItems = Math.max(...analytics.divisionDetails.map(d => d.totalItems));
+        const maxQty = Math.max(...analytics.divisionDetails.map(d => d.totalQuantity));
+        const maxValue = Math.max(...analytics.divisionDetails.map(d => d.totalValue));
+
+        setDivisionDetailsChart({
+          labels: analytics.divisionDetails.map(d => d.division),
+          datasets: [
+            {
+              label: 'Items',
+              data: analytics.divisionDetails.map(d => maxItems > 0 ? Math.round((d.totalItems / maxItems) * 100) : 0),
+              backgroundColor: COLORS.blue,
+              borderRadius: 4
+            },
+            {
+              label: 'Quantity',
+              data: analytics.divisionDetails.map(d => maxQty > 0 ? Math.round((d.totalQuantity / maxQty) * 100) : 0),
+              backgroundColor: COLORS.green,
+              borderRadius: 4
+            },
+            {
+              label: 'Value',
+              data: analytics.divisionDetails.map(d => maxValue > 0 ? Math.round((d.totalValue / maxValue) * 100) : 0),
+              backgroundColor: COLORS.purple,
+              borderRadius: 4
+            }
+          ]
+        });
+      }
+
+      // Monthly trend
+      if (analytics.monthlyTrend && analytics.monthlyTrend.length > 0) {
+        setMonthlyTrend({
+          labels: analytics.monthlyTrend.map(d => d.month),
+          datasets: [
+            {
+              label: 'Issued',
+              data: analytics.monthlyTrend.map(d => d.issued),
+              borderColor: COLORS.blue,
+              backgroundColor: 'rgba(59,130,246,0.1)',
+              fill: true,
+              tension: 0.4
+            },
+            {
+              label: 'Returned',
+              data: analytics.monthlyTrend.map(d => d.returned),
+              borderColor: COLORS.green,
+              backgroundColor: 'rgba(16,185,129,0.1)',
+              fill: true,
+              tension: 0.4
+            }
+          ]
+        });
+      }
+
+      // Top items
+      if (analytics.topItems && analytics.topItems.length > 0) {
+        setTopItems({
+          labels: analytics.topItems.map(d => d.name.length > 15 ? d.name.substring(0, 15) + '...' : d.name),
+          datasets: [{
+            label: 'Times Borrowed',
+            data: analytics.topItems.map(d => d.borrowed),
+            backgroundColor: PIE_COLORS.slice(0, analytics.topItems.length),
+            borderRadius: 4
+          }]
+        });
+      }
+
+      // Category chart
+      if (analytics.categories && analytics.categories.length > 0) {
+        setCategoryChart({
+          labels: analytics.categories.map(d => d.name),
+          datasets: [{
+            label: 'Items',
+            data: analytics.categories.map(d => d.quantity),
+            backgroundColor: PIE_COLORS.slice(0, analytics.categories.length),
+            borderWidth: 0
+          }]
+        });
+      }
+
+      // Stock status
+      if (analytics.stockStatus) {
+        const ss = analytics.stockStatus;
+        setStockStatusChart({
+          labels: ['Out of Stock', 'Low Stock', 'In Stock'],
+          datasets: [{
+            data: [ss.outOfStock, ss.lowStock, ss.inStock],
+            backgroundColor: [COLORS.red, COLORS.yellow, COLORS.green],
+            borderWidth: 0
+          }]
+        });
+      }
+
+      // Requisitions
+      if (analytics.requisitions && analytics.requisitions.length > 0) {
+        setRequisitionChart({
+          labels: analytics.requisitions.map(d => d.division),
+          datasets: [
+            { label: 'Pending', data: analytics.requisitions.map(d => d.pending), backgroundColor: '#6b7280', borderRadius: 4 },
+            { label: 'Approved', data: analytics.requisitions.map(d => d.approved), backgroundColor: COLORS.green, borderRadius: 4 },
+            { label: 'Rejected', data: analytics.requisitions.map(d => d.rejected), backgroundColor: COLORS.red, borderRadius: 4 }
+          ]
+        });
+      }
+
+      // Recent transactions
+      const transactions = Array.isArray(txData) ? txData : (txData.transactions || []);
+      setRecentTransactions(transactions.slice(0, 10));
+
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
   }
+
+  useEffect(() => {
+    fetchFilters();
+    fetchDashboard();
+    const interval = setInterval(() => fetchDashboard({ silent: true }), 30000);
+    return () => clearInterval(interval);
+  }, [dateFrom, dateTo, filterDivision, filterCategory]);
+
+  const clearFilters = () => {
+    setDateFrom('');
+    setDateTo('');
+    setFilterDivision('');
+    setFilterCategory('');
+  };
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: 'bottom' } },
-    scales: { y: { beginAtZero: true } }
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
+      tooltip: createTooltipConfig()
+    },
+    scales: { y: { beginAtZero: true } },
+    barPercentage: 0.7,
+    categoryPercentage: 0.8
   };
 
-  const kpis = [
-    {
-      label: 'TOTAL ITEMS',
-      value: loading ? '...' : stats.totalItems,
-      icon: '',
-      iconBg: 'text-blue-500'
+  const doughnutOptions = (position = 'bottom') => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position, labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+      tooltip: createDoughnutTooltipConfig()
     },
-    {
-      label: 'LOW STOCK ALERTS',
-      value: loading ? '...' : stats.lowStockAlerts,
-      icon: '',
-      iconBg: 'text-yellow-500'
-    },
-    {
-      label: 'OVERDUE RETURNS',
-      value: loading ? '...' : stats.overdueReturns,
-      icon: '',
-      iconBg: 'text-red-500'
-    },
-    {
-      label: 'PENDING REQUESTS',
-      value: loading ? '...' : stats.pendingRequests,
-      icon: '',
-      iconBg: 'text-blue-400'
-    },
-    {
-      label: 'TOTAL INVENTORY VALUE',
-      value: loading ? '...' : `₱${stats.totalInventoryValue.toLocaleString()}`,
-      icon: '',
-      iconBg: 'text-green-500'
-    }
+    cutout: '60%'
+  });
+
+  const kpiCards = [
+    { label: 'TOTAL ITEMS', value: loading ? '...' : kpis.totalItems, color: 'text-blue-600' },
+    { label: 'LOW STOCK', value: loading ? '...' : kpis.lowStock, color: 'text-yellow-600' },
+    { label: 'ITEMS ON LOAN', value: loading ? '...' : kpis.itemsOnLoan, color: 'text-orange-600' },
+    { label: 'TOTAL TRANSACTIONS', value: loading ? '...' : kpis.totalTransactions, color: 'text-purple-600' },
+    { label: 'RETURN RATE', value: loading ? '...' : `${kpis.returnRate}%`, color: 'text-green-600' },
+    { label: 'TOTAL VALUE', value: loading ? '...' : formatCurrency(kpis.totalValue), color: 'text-cyan-600' }
   ];
 
   return (
-    <Layout>
-      <div className="p-6 bg-gray-100 min-h-screen">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
+    <div className="p-6 bg-gray-100 min-h-screen">
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-          {kpis.map((kpi, i) => (
+      {/* Filters */}
+      <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          <span className="text-sm font-semibold text-gray-700">Filters</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">From Date</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">To Date</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Division</label>
+            <select
+              value={filterDivision}
+              onChange={(e) => setFilterDivision(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Divisions</option>
+              {divisions.map(d => (
+                <option key={d.division_id || d.id} value={d.division_id || d.id}>{d.division_name || d.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Category</label>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Categories</option>
+              {categories.map(c => (
+                <option key={c.category_id || c.id} value={c.category_id || c.id}>{c.category_name || c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={clearFilters}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+            >
+              Clear Filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        {!hasLoaded ? (
+          Array.from({ length: 6 }).map((_, i) => <SkeletonKpiCard key={i} />)
+        ) : (
+          kpiCards.map((kpi, i) => (
             <KpiCard key={i} label={kpi.label} value={kpi.value} />
-          ))}
-        </div>
+          ))
+        )}
+      </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-          {/* Division-wise Consumption */}
-          <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Division-wise Consumption</h2>
+      {/* Charts Row 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        {/* Division-wise Consumption */}
+        <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">Division Consumption Analytics</h2>
+          {!hasLoaded ? (
+            <SkeletonChart className="border-0 p-0 shadow-none" />
+          ) : (
             <div style={{ height: 320 }}>
-              <Bar data={divisionChart} options={chartOptions} />
+              <Bar data={divisionConsumption} options={chartOptions} />
             </div>
-          </div>
-
-          {/* Overdue Returns */}
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Overdue Returns</h2>
-            {overdueReturns.length === 0 ? (
-              <div className="flex items-center justify-center h-40 text-sm text-gray-400">
-                No overdue returns
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {overdueReturns.map((tx, idx) => (
-                  <div key={tx.id ?? tx.transaction_id ?? tx.item_id ?? idx} className="border border-red-100 bg-red-50 rounded-lg p-3 text-sm">
-                    <p className="font-medium text-gray-800">{tx.item_name}</p>
-                    <p className="text-gray-500 text-xs">{tx.borrower_name} · {tx.division_name}</p>
-                    <p className="text-red-500 text-xs mt-1">
-                      Borrowed: {new Date(tx.borrow_date || tx.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Recent Issuances Table */}
+        {/* Stock Status */}
         <div className="bg-white rounded-xl shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Recent Issuances</h2>
-          <table className="min-w-full">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Stock Status Distribution</h2>
+          {!hasLoaded ? (
+            <SkeletonChart className="border-0 p-0 shadow-none" />
+          ) : (
+            <div style={{ height: 280 }} className="flex items-center justify-center">
+              {stockStatusChart.labels.length > 0 ? (
+                <Doughnut data={stockStatusChart} options={doughnutOptions('bottom')} />
+              ) : (
+                <p className="text-sm text-gray-400">No data</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Charts Row 2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        {/* Monthly Trend */}
+        <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Monthly Consumption Trend (6 months)</h2>
+          {!hasLoaded ? (
+            <SkeletonChart className="border-0 p-0 shadow-none" />
+          ) : (
+            <div style={{ height: 280 }}>
+              <Line data={monthlyTrend} options={chartOptions} />
+            </div>
+          )}
+        </div>
+
+        {/* Top Items */}
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Top Consumed Items</h2>
+          {!hasLoaded ? (
+            <SkeletonChart className="border-0 p-0 shadow-none" />
+          ) : (
+            <div style={{ height: 280 }}>
+              <Bar data={topItems} options={{
+                ...chartOptions,
+                indexAxis: 'y',
+                scales: { x: { beginAtZero: true } }
+              }} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Charts Row 3 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        {/* Category Breakdown */}
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Inventory by Category</h2>
+          {!hasLoaded ? (
+            <SkeletonChart className="border-0 p-0 shadow-none" />
+          ) : (
+            <div style={{ height: 280 }} className="flex items-center justify-center">
+              {categoryChart.labels.length > 0 ? (
+                <Doughnut data={categoryChart} options={doughnutOptions('right')} />
+              ) : (
+                <p className="text-sm text-gray-400">No data</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Requisition Analytics */}
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Requisition Analytics</h2>
+          {!hasLoaded ? (
+            <SkeletonChart className="border-0 p-0 shadow-none" />
+          ) : (
+            <div style={{ height: 280 }}>
+              <Bar data={requisitionChart} options={chartOptions} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Division Inventory Summary - Full Width */}
+      <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">Division Inventory Summary</h2>
+        {!hasLoaded ? (
+          <SkeletonChart className="border-0 p-0 shadow-none" />
+        ) : (
+          <div style={{ height: 300 }}>
+            <Bar
+              data={divisionDetailsChart}
+              options={{
+                ...chartOptions,
+                indexAxis: 'y',
+                plugins: {
+                  legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
+                  tooltip: {
+                    callbacks: {
+                      label: function(context) {
+                        const idx = context.dataIndex;
+                        const division = divisionDetails[idx];
+                        if (!division) return '';
+                        const label = context.dataset.label;
+                        if (label === 'Items') return `Items: ${division.totalItems}`;
+                        if (label === 'Quantity') return `Quantity: ${division.totalQuantity.toLocaleString()}`;
+                        if (label === 'Value') return `Value: ${formatCurrency(division.totalValue)}`;
+                        return '';
+                      }
+                    }
+                  }
+                },
+                scales: {
+                  x: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { callback: (v) => v + '%' }
+                  },
+                  y: { ticks: { font: { size: 12 } } }
+                }
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Recent Issuances */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">Recent Borrowed Items</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100">
-                <th className="text-left text-xs font-medium text-gray-400 pb-3">Item</th>
-                <th className="text-left text-xs font-medium text-gray-400 pb-3">Borrower</th>
-                <th className="text-left text-xs font-medium text-gray-400 pb-3">Division</th>
-                <th className="text-left text-xs font-medium text-gray-400 pb-3">Qty</th>
-                <th className="text-left text-xs font-medium text-gray-400 pb-3">Date</th>
-                <th className="text-left text-xs font-medium text-gray-400 pb-3">Status</th>
+                <th className="text-left text-xs font-medium text-gray-400 pb-3 w-[25%]">Item</th>
+                <th className="text-left text-xs font-medium text-gray-400 pb-3 w-[20%]">Borrower</th>
+                <th className="text-left text-xs font-medium text-gray-400 pb-3 w-[22%]">Division</th>
+                <th className="text-center text-xs font-medium text-gray-400 pb-3 w-[8%]">Qty</th>
+                <th className="text-left text-xs font-medium text-gray-400 pb-3 w-[13%]">Date</th>
+                <th className="text-left text-xs font-medium text-gray-400 pb-3 w-[12%]">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-400">Loading...</td></tr>
+                Array.from({ length: 5 }).map((_, i) => (
+                  <SkeletonTableRow key={i} widths={['w-28', 'w-20', 'w-24', 'w-10', 'w-20', 'w-16']} />
+                ))
               ) : recentTransactions.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-400">No recent transactions</td></tr>
               ) : (
                 recentTransactions.map((tx, idx) => (
-                  <tr key={tx.id ?? tx.transaction_id ?? tx.item_id ?? idx} className="hover:bg-gray-50">
+                  <tr key={`${tx.id ?? tx.transaction_id ?? tx.item_id}-${idx}`} className="hover:bg-gray-50">
                     <td className="py-3 text-sm font-medium text-gray-800">{tx.item_name}</td>
                     <td className="py-3 text-sm text-gray-600">{tx.borrower_name}</td>
                     <td className="py-3 text-sm text-gray-600">{tx.division_name}</td>
-                    <td className="py-3 text-sm text-gray-600">{tx.quantity}</td>
+                    <td className="py-3 text-sm text-gray-600 text-center">{tx.quantity_borrowed ?? tx.quantity}</td>
                     <td className="py-3 text-sm text-gray-600">
                       {new Date(tx.borrow_date || tx.created_at).toLocaleDateString()}
                     </td>
@@ -277,6 +602,6 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
-    </Layout>
+    </div>
   );
 }

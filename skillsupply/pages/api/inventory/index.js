@@ -11,12 +11,13 @@ async function handler(req, res) {
     try {
       const result = await query(`
         SELECT i.item_id, i.item_name, i.serial_number, i.category_id, i.division_id, i.unit_of_measure,
-          i.quantity_on_hand, i.reorder_level, i.unit_cost, i.is_active, i.created_at,
+          i.quantity_on_hand, i.reorder_level, i.defective_quantity AS defective_qty, i.is_returnable, i.unit_cost, i.description, i.notes, i.is_active, i.created_at,
           c.category_name,
           d.division_name,
           CASE
             WHEN i.quantity_on_hand = 0 THEN 'Out of Stock'
-            WHEN i.quantity_on_hand <= i.reorder_level THEN 'Low Stock'
+            WHEN i.quantity_on_hand <= i.reorder_level THEN 'Critical'
+            WHEN i.quantity_on_hand <= i.reorder_level * 1.5 THEN 'Low Stock'
             ELSE 'Sufficient'
           END as stock_status
         FROM inventory_items i
@@ -43,7 +44,7 @@ async function handler(req, res) {
     const {
       item_name, serial_number, category_id, division_id,
       unit_of_measure, quantity_on_hand,
-      reorder_level, unit_cost
+      reorder_level, defective_quantity, is_returnable, unit_cost, description, notes
     } = req.body;
 
     if (!item_name) return res.status(400).json({ error: 'Item name required' });
@@ -51,13 +52,14 @@ async function handler(req, res) {
     try {
       const result = await query(`
         INSERT INTO inventory_items
-          (item_name, serial_number, category_id, division_id, unit_of_measure, quantity_on_hand, reorder_level, unit_cost)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+          (item_name, serial_number, category_id, division_id, unit_of_measure, quantity_on_hand,
+           reorder_level, defective_quantity, is_returnable, unit_cost, description, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         RETURNING *
-      `, [item_name, serial_number || null, category_id, division_id, unit_of_measure, quantity_on_hand || 0, reorder_level || 10, unit_cost]);
+      `, [item_name, serial_number || null, category_id, division_id, unit_of_measure, quantity_on_hand || 0, reorder_level || 10, defective_quantity ?? 0, is_returnable ?? false, unit_cost, description || null, notes || null]);
 
       await query(`
-        INSERT INTO audit_log (user_id, action_type, affected_table, affected_record_id, new_value)
+        INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
         VALUES ($1,'CREATE','inventory_items',$2,$3)
       `, [decoded.user_id, result.rows[0].item_id, JSON.stringify(result.rows[0])]);
 

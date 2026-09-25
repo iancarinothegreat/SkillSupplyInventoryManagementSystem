@@ -75,8 +75,8 @@ async function handler(req, res) {
     const updated = await client.query('SELECT * FROM borrow_transactions WHERE borrow_id=$1', [id]);
 
     await client.query(
-      'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [req.user.user_id, req.user.username, 'UPDATE_STATUS', 'borrow_transactions', id, JSON.stringify(current), JSON.stringify(updated.rows[0])]
+      'INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6)',
+      [req.user.user_id, 'UPDATE_STATUS', 'borrow_transactions', id, JSON.stringify(current), JSON.stringify(updated.rows[0])]
     );
 
     await client.query('COMMIT');

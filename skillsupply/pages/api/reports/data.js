@@ -129,7 +129,12 @@ const REPORTS = {
   },
   audit: {
     title: 'Audit Trail',
-    query: `SELECT a.timestamp AS "Timestamp", u.full_name AS "User", a.action_type AS "Action", a.affected_table AS "Table", a.affected_record_id AS "Record ID", a.old_value AS "Previous Value", a.new_value AS "New Value" FROM audit_log a LEFT JOIN users u ON a.user_id = u.user_id WHERE 1=1`,
+    query: `SELECT a.timestamp AS "Timestamp", u.full_name AS "User", a.action AS "Action", a.table_name AS "Table", a.record_id AS "Record ID", a.old_values AS "Previous Value", a.new_values AS "New Value" FROM audit_log a LEFT JOIN users u ON a.user_id = u.user_id WHERE 1=1`,
+    filters: ['date'],
+  },
+  login_audit: {
+    title: 'Login Audit Logs',
+    query: `SELECT la.login_time AS "Login Time", la.logout_time AS "Logout Time", u.full_name AS "User", la.username AS "Username", r.role_name AS "Role", la.action AS "Action", la.failure_reason AS "Failure Reason", la.ip_address AS "IP Address" FROM login_audit la LEFT JOIN users u ON la.user_id = u.user_id LEFT JOIN roles r ON u.role_id = r.role_id WHERE 1=1`,
     filters: ['date'],
   },
   forecast: {
@@ -153,7 +158,7 @@ const REPORTS = {
 async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
 
-  const { report = 'inventory', from, to, division = 'all', category = 'all', status = 'all', format = 'json' } = req.query;
+  const { report = 'inventory', from, to, division = 'all', category = 'all', status = 'all', format = 'json', search, action, sort, order } = req.query;
   const definition = REPORTS[report];
   if (!definition) return res.status(400).json({ error: 'Invalid report type.' });
 
@@ -187,14 +192,24 @@ async function handler(req, res) {
       const divResult = await db.query('SELECT division_id, division_name FROM divisions');
       divResult.rows.forEach(d => { divisionMap[d.division_id] = d.division_name; });
 
-      const rows = forecasts.map(f => ({
-        Item: f.item_name,
-        Division: divisionMap[f.division_id] || '—',
-        'Forecast Date': new Date().toISOString().slice(0, 10),
-        'Average Demand': Number(f.sma).toFixed(1),
-        'Days to Depletion': f.daysLeft === 999 ? 'N/A' : f.daysLeft,
-        'Risk Level': f.severity === 'critical' ? 'Critical' : f.severity === 'warning' ? 'Warning' : 'Safe',
-      }));
+      const rows = forecasts.map(f => {
+        const stock = Number(f.stock) || 0;
+        const reorder = Number(f.reorder_level) || 0;
+        let riskLevel = 'Safe';
+        if (reorder > 0 && stock <= reorder) riskLevel = 'Critical';
+        else if (reorder > 0 && stock <= reorder * 1.5) riskLevel = 'Warning';
+        else if (f.severity === 'critical') riskLevel = 'Critical';
+        else if (f.severity === 'warning') riskLevel = 'Warning';
+
+        return {
+          Item: f.item_name,
+          Division: divisionMap[f.division_id] || '—',
+          'Forecast Date': new Date().toISOString().slice(0, 10),
+          'Average Demand': Number(f.sma).toFixed(1),
+          'Days to Depletion': f.daysLeft === 999 ? 'N/A' : f.daysLeft,
+          'Risk Level': riskLevel,
+        };
+      });
 
       if (report === 'forecast_risk') {
         rows.sort((a, b) => {
@@ -221,6 +236,8 @@ async function handler(req, res) {
           ? 'f.forecast_date'
           : report === 'audit'
             ? 'a.timestamp'
+            : report === 'login_audit'
+              ? 'la.login_time'
             : report === 'incidents'
               ? 'ir.incident_date'
             : report.startsWith('requisition') || report === 'requisitions'
@@ -249,7 +266,25 @@ async function handler(req, res) {
       }
     }
     query += definition.group || '';
-    query += definition.order || ' ORDER BY 1 DESC';
+
+    if (report === 'audit' || report === 'login_audit') {
+      if (search) {
+        query += report === 'login_audit'
+          ? ` AND (u.full_name ILIKE ${add(`%${search}%`)} OR la.username ILIKE ${add(`%${search}%`)} OR la.action ILIKE ${add(`%${search}%`)} OR la.failure_reason ILIKE ${add(`%${search}%`)} OR la.ip_address ILIKE ${add(`%${search}%`)})`
+          : ` AND (u.full_name ILIKE ${add(`%${search}%`)} OR a.action ILIKE ${add(`%${search}%`)} OR a.table_name ILIKE ${add(`%${search}%`)} OR CAST(a.record_id AS TEXT) ILIKE ${add(`%${search}%`)})`;
+      }
+      if (action && action !== 'all') {
+        query += ` AND ${report === 'login_audit' ? 'la.action' : 'a.action'} = ${add(action)}`;
+      }
+      const allowedSorts = report === 'login_audit'
+        ? ['login_time', 'action', 'user_id']
+        : ['timestamp', 'action', 'table_name', 'user_id'];
+      const sortCol = allowedSorts.includes(sort) ? sort : report === 'login_audit' ? 'login_time' : 'timestamp';
+      const sortOrder = order && order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+      query += ` ORDER BY ${report === 'login_audit' ? 'la' : 'a'}.${sortCol} ${sortOrder}`;
+    } else {
+      query += definition.order || ' ORDER BY 1 DESC';
+    }
     query += ' LIMIT 500';
 
     const result = await db.query(query, params);

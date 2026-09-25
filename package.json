@@ -1,0 +1,10 @@
+{
+  "name": "skillsupply-root",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix skillsupply",
+    "build": "npm run build --prefix skillsupply",
+    "start": "npm run start --prefix skillsupply",
+    "lint": "npm run lint --prefix skillsupply"
+  }
+}

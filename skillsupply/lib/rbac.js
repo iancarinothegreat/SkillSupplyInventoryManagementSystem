@@ -16,3 +16,8 @@ export function withAuth(handler, minLevel = 1) {
     return handler(req, res);
   };
 }
+
+export function checkRole(user, minLevel) {
+  if (!user || typeof user.hierarchy_level !== 'number') return false;
+  return user.hierarchy_level >= minLevel;
+}

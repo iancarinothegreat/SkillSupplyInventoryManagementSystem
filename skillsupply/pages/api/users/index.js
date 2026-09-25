@@ -54,6 +54,12 @@ async function handler(req, res) {
         VALUES ($1,$2,$3,$4,$5,$6)
         RETURNING user_id, username, full_name, email, role_id
       `, [username, hash, normalizedFullName, email, contact, role_id]);
+
+      await query(`
+        INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
+        VALUES ($1,'CREATE','users',$2,$3)
+      `, [req.user.user_id, result.rows[0].user_id, JSON.stringify(result.rows[0])]);
+
       return res.status(201).json(result.rows[0]);
     } catch (err) {
       if (err.code === '23505')
@@ -105,6 +111,11 @@ async function handler(req, res) {
         RETURNING user_id, username, full_name, email, contact, role_id, is_active, division_id
       `, [username, normalizedFullName, email || null, contact || null, role_id, password_hash, is_active ?? current.is_active, division_id || null, user_id]);
 
+      await query(`
+        INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
+        VALUES ($1,'UPDATE','users',$2,$3,$4)
+      `, [req.user.user_id, user_id, JSON.stringify({ username: current.username, full_name: current.full_name, email: current.email, role_id: current.role_id, is_active: current.is_active }), JSON.stringify(result.rows[0])]);
+
       return res.status(200).json(result.rows[0]);
     } catch (err) {
       console.error(err);
@@ -144,6 +155,11 @@ async function handler(req, res) {
         'DELETE FROM users WHERE user_id = $1 RETURNING user_id, username',
         [targetUserId]
       );
+
+      await query(`
+        INSERT INTO audit_log (user_id, action, table_name, record_id, old_values)
+        VALUES ($1,'DELETE','users',$2,$3)
+      `, [req.user.user_id, targetUserId, JSON.stringify(targetUser)]);
 
       return res.status(200).json({ message: 'User deleted permanently', user: deleted.rows[0] });
     } catch (err) {

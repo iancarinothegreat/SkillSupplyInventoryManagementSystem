@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Layout from '@/components/Layout';
+import { SkeletonKpiCard, SkeletonTableRow } from '@/components/Skeleton';
 
 export default function InventoryPage() {
   const [items, setItems] = useState([]);
@@ -18,11 +18,13 @@ export default function InventoryPage() {
   const [editItem, setEditItem] = useState(null);
   const [form, setForm] = useState({
     item_name: '', serial_number: '', category_id: '', division_id: '', unit: '',
-    quantity: '', reorder_point: '', unit_price: '', description: ''
+    quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, notes: ''
   });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   function normalizeInventoryItem(item) {
     return {
@@ -45,6 +47,10 @@ export default function InventoryPage() {
       unit_of_measure: values.unit,
       quantity_on_hand: values.quantity || 0,
       reorder_level: values.reorder_point || 10,
+      defective_quantity: values.defective_quantity || 0,
+      is_returnable: values.is_returnable,
+      description: values.description || null,
+      notes: values.notes || null,
       unit_cost: values.unit_price || 0,
     };
   }
@@ -56,13 +62,14 @@ export default function InventoryPage() {
     setImportStatus('Uploading...');
 
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const formData = new FormData();
       formData.append('file', file);
 
       const rows = await parseImportFile(file);
       if (rows.length === 0) {
         setImportStatus('No importable rows found in this file.');
+        setTimeout(() => setImportStatus(''), 5000);
         return;
       }
 
@@ -76,13 +83,16 @@ export default function InventoryPage() {
       if (res.ok) {
         const skipped = data.skippedCount ? ` Skipped ${data.skippedCount} blank or unrecognized row(s).` : '';
         setImportStatus(`Imported ${data.insertedCount} items.${skipped}`);
+        setTimeout(() => setImportStatus(''), 5000);
         await fetchItems();
       } else {
         setImportStatus(data.error || 'Import failed');
+        setTimeout(() => setImportStatus(''), 5000);
       }
     } catch (err) {
       console.error(err);
       setImportStatus('Import error');
+      setTimeout(() => setImportStatus(''), 5000);
     } finally {
       // reset so selecting same file again triggers onChange
       if (e.target) e.target.value = '';
@@ -170,7 +180,7 @@ export default function InventoryPage() {
   async function fetchItems() {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/inventory', {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -196,7 +206,7 @@ export default function InventoryPage() {
 
   async function fetchCategories() {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/categories', { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (res.ok) setCategories(Array.isArray(data) ? data : data.categories || []);
@@ -205,7 +215,7 @@ export default function InventoryPage() {
 
   async function fetchDivisions() {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/divisions', { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (res.ok) setDivisions(Array.isArray(data) ? data : data.divisions || []);
@@ -214,7 +224,7 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditItem(null);
-    setForm({ item_name: '', serial_number: '', category_id: '', division_id: '', unit: '', quantity: '', reorder_point: '', unit_price: '', description: '' });
+    setForm({ item_name: '', serial_number: '', category_id: '', division_id: '', unit: '', quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, notes: '' });
     setError('');
     setShowModal(true);
   }
@@ -230,7 +240,10 @@ export default function InventoryPage() {
       quantity: item.quantity ?? '',
       reorder_point: item.reorder_point ?? '',
       unit_price: item.unit_price ?? '',
-      description: item.description ?? ''
+      description: item.description ?? '',
+      defective_quantity: item.defective_qty ?? item.defective_quantity ?? '',
+      is_returnable: item.is_returnable ?? item.returnable ?? false,
+      notes: item.notes ?? ''
     });
     setError('');
     setShowModal(true);
@@ -243,7 +256,7 @@ export default function InventoryPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const url = editItem ? `/api/inventory/${editItem.id}` : '/api/inventory';
     const method = editItem ? 'PUT' : 'POST';
     try {
@@ -253,14 +266,24 @@ export default function InventoryPage() {
         body: JSON.stringify(toInventoryPayload(form))
       });
       const data = await res.json();
-      if (res.ok) { setShowModal(false); fetchItems(); }
-      else setError(data.error || 'Failed to save');
-    } catch { setError('Network error'); }
+      if (res.ok) {
+        setShowModal(false);
+        setSuccess(editItem ? 'Item updated successfully.' : 'Item added successfully.');
+        setTimeout(() => setSuccess(''), 5000);
+        fetchItems();
+      } else {
+        setError(data.error || 'Failed to save');
+        setTimeout(() => setError(''), 5000);
+      }
+    } catch {
+      setError('Network error');
+      setTimeout(() => setError(''), 5000);
+    }
   }
 
   async function handleDelete(id) {
     if (!confirm('Delete this item?')) return;
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     await fetch(`/api/inventory/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
@@ -277,6 +300,56 @@ export default function InventoryPage() {
     return { label: 'Sufficient', color: 'bg-green-100 text-green-700', bar: 'bg-green-500', pct: 100 };
   }
 
+  async function handleSetNonReturnable() {
+    setConfirmDialog({
+      title: 'Set All Non-Returnable',
+      message: 'Set all items as Non-Returnable? This will update every item in inventory.',
+      confirmLabel: 'Yes, set all',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        const token = sessionStorage.getItem('token');
+        try {
+          const res = await fetch('/api/inventory/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ action: 'set_non_returnable' }),
+          });
+          if (res.ok) {
+            setSuccess('All items set to non-returnable.');
+            setTimeout(() => setSuccess(''), 5000);
+            fetchItems();
+          }
+        } catch { }
+      }
+    });
+  }
+
+  async function handleDeleteAll() {
+    setConfirmDialog({
+      title: 'Delete All Items',
+      message: 'Are you sure you want to delete ALL items? This action cannot be undone.',
+      confirmLabel: 'Yes, delete all',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        const token = sessionStorage.getItem('token');
+        try {
+          const res = await fetch('/api/inventory/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ action: 'delete_all' }),
+          });
+          if (res.ok) {
+            setSuccess('All items deleted.');
+            setTimeout(() => setSuccess(''), 5000);
+            fetchItems();
+          }
+        } catch { }
+      }
+    });
+  }
+
   const filtered = items.filter(item => {
     const matchSearch = item.item_name?.toLowerCase().includes(search.toLowerCase());
     const matchCat = filterCategory ? String(item.category_id) === String(filterCategory) : true;
@@ -284,49 +357,47 @@ export default function InventoryPage() {
     return matchSearch && matchCat && matchDiv;
   });
 
+  const totalItems = items.length;
+  const showingItems = filtered.length;
+  const criticalStock = items.filter((it) => {
+    const qty = parseInt(it.quantity || it.quantity_on_hand || 0);
+    const reorder = parseInt(it.reorder_point || it.reorder_level || 0);
+    return qty <= reorder && qty > 0;
+  }).length;
+  const estValue = items.reduce((sum, it) => {
+    const q = parseFloat(it.quantity || it.quantity_on_hand || 0) || 0;
+    const p = parseFloat(it.unit_price || it.unit_cost || 0) || 0;
+    return sum + q * p;
+  }, 0);
+
   return (
-    <Layout>
-      <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 min-h-screen">
         <h1 className="text-2xl font-bold text-gray-800 mb-6">Inventory Management</h1>
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-          {(() => {
-            const totalItems = items.length;
-            const showingItems = filtered.length;
-            const criticalStock = items.filter((it) => {
-              const qty = parseInt(it.quantity || it.quantity_on_hand || 0);
-              const reorder = parseInt(it.reorder_point || it.reorder_level || 0);
-              return qty <= reorder && qty > 0;
-            }).length;
-
-            const estValue = items.reduce((sum, it) => {
-              const q = parseFloat(it.quantity || it.quantity_on_hand || 0) || 0;
-              const p = parseFloat(it.unit_price || it.unit_cost || 0) || 0;
-              return sum + q * p;
-            }, 0);
-
-            return (
-              <>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
-                  <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Total Items</p>
-                  <p className="text-3xl font-bold text-[#1f2d42] leading-none">{totalItems}</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
-                  <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Showing</p>
-                  <p className="text-3xl font-bold text-[#1f2d42] leading-none">{showingItems}</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
-                  <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Critical Stock</p>
-                  <p className="text-3xl font-bold text-[#1f2d42] leading-none">{criticalStock}</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
-                  <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Est. Value</p>
-                  <p className="text-3xl font-bold text-[#1f2d42] leading-none">₱{estValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                </div>
-              </>
-            );
-          })()}
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => <SkeletonKpiCard key={i} />)
+          ) : (
+            <>
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
+                <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Total Items</p>
+                <p className="text-3xl font-bold text-[#1f2d42] leading-none">{totalItems}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
+                <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Showing</p>
+                <p className="text-3xl font-bold text-[#1f2d42] leading-none">{showingItems}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
+                <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Critical Stock</p>
+                <p className="text-3xl font-bold text-[#1f2d42] leading-none">{criticalStock}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
+                <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Est. Value</p>
+                <p className="text-3xl font-bold text-[#1f2d42] leading-none">₱{estValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Toolbar */}
@@ -375,6 +446,18 @@ export default function InventoryPage() {
               Import File
             </button>
             <button
+              onClick={handleSetNonReturnable}
+              className="flex items-center gap-2 border border-orange-300 bg-white text-orange-700 px-4 py-2 rounded-lg text-sm hover:bg-orange-50"
+            >
+              Set All Non-Returnable
+            </button>
+            <button
+              onClick={handleDeleteAll}
+              className="flex items-center gap-2 border border-red-300 bg-white text-red-700 px-4 py-2 rounded-lg text-sm hover:bg-red-50"
+            >
+              Delete All Items
+            </button>
+            <button
               onClick={openAdd}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
             >
@@ -389,27 +472,47 @@ export default function InventoryPage() {
           </div>
         )}
 
+        {success && (
+          <div className="mb-5 rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700 flex items-center justify-between">
+            <span>{success}</span>
+            <button onClick={() => setSuccess('')} className="text-green-500 hover:text-green-700 ml-3">&times;</button>
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-5 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError('')} className="text-red-500 hover:text-red-700 ml-3">&times;</button>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-20">Item No.</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Item Name</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Category</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Division</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Unit</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-48">Stock Level</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Status</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Unit Cost</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Actions</th>
-              </tr>
-            </thead>
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-20">Item No.</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Item Name</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Category</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Division</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Unit</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-48">Stock Level</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Quantity</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Defective Qty</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Returnable</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Status</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Unit Cost</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Actions</th>
+                </tr>
+              </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={9} className="text-center py-10 text-sm text-gray-400">Loading...</td></tr>
+                Array.from({ length: 8 }).map((_, i) => (
+                  <SkeletonTableRow key={i} widths={['w-10', 'w-28', 'w-20', 'w-20', 'w-12', 'w-28', 'w-12', 'w-10', 'w-12', 'w-16', 'w-16', 'w-16']} />
+                ))
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-10 text-sm text-gray-400">No items found</td></tr>
+                <tr><td colSpan={12} className="text-center py-10 text-sm text-gray-400">No items found</td></tr>
               ) : (
                 filtered.map((item, index) => {
                   const status = getStockStatus(item);
@@ -421,16 +524,16 @@ export default function InventoryPage() {
                       <td className="px-4 py-3 text-sm text-gray-600">{item.division_name || '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{item.unit}</td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${status.bar}`}
-                              style={{ width: `${status.pct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500 w-6 text-right">{item.quantity}</span>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${status.bar}`}
+                            style={{ width: `${status.pct}%` }}
+                          />
                         </div>
                       </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{item.quantity}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{parseInt(item.defective_qty ?? item.defectiveQty ?? 0) || 0}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{(item.is_returnable ?? item.returnable) ? 'Yes' : 'No'}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${status.color}`}>
                           {status.label}
@@ -477,6 +580,7 @@ export default function InventoryPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Add/Edit Modal */}
@@ -486,7 +590,6 @@ export default function InventoryPage() {
               <h2 className="text-lg font-bold text-gray-800 mb-4">
                 {editItem ? 'Edit Item' : 'Add New Item'}
               </h2>
-              {error && <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded mb-3">{error}</div>}
               <form onSubmit={handleSubmit} className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-gray-700">Item Name</label>
@@ -527,9 +630,29 @@ export default function InventoryPage() {
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-sm font-medium text-gray-700">Unit</label>
-                    <input type="text" required placeholder="pcs, box..." value={form.unit}
+                    <select required value={form.unit}
                       onChange={e => setForm({ ...form, unit: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Select unit</option>
+                      <option value="pcs">Pieces (pcs)</option>
+                      <option value="box">Box</option>
+                      <option value="carton">Carton</option>
+                      <option value="pack">Pack</option>
+                      <option value="set">Set</option>
+                      <option value="pair">Pair</option>
+                      <option value="roll">Roll</option>
+                      <option value="bag">Bag</option>
+                      <option value="bottle">Bottle</option>
+                      <option value="can">Can</option>
+                      <option value="jar">Jar</option>
+                      <option value="ream">Ream</option>
+                      <option value="liter">Liter</option>
+                      <option value="kg">Kilogram (kg)</option>
+                      <option value="meter">Meter</option>
+                      <option value="ft">Feet (ft)</option>
+                      <option value="inch">Inch</option>
+                      <option value="gal">Gallon (gal)</option>
+                    </select>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700">Quantity</label>
@@ -548,6 +671,32 @@ export default function InventoryPage() {
                   <label className="text-sm font-medium text-gray-700">Unit Price (₱)</label>
                   <input type="number" min="0" step="0.01" value={form.unit_price}
                     onChange={e => setForm({ ...form, unit_price: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Defective Qty</label>
+                    <input type="number" min="0" value={form.defective_quantity}
+                      onChange={e => setForm({ ...form, defective_quantity: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div className="flex items-end pb-1">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.is_returnable}
+                        onChange={e => setForm({ ...form, is_returnable: e.target.checked })}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Returnable
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Defective Notes</label>
+                  <textarea rows={2} value={form.notes}
+                    onChange={e => setForm({ ...form, notes: e.target.value })}
+                    placeholder="Reason or notes for defective quantity (optional)"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
@@ -579,13 +728,16 @@ export default function InventoryPage() {
               <div className="space-y-3 text-sm">
                 {[
                   ['Item Name', viewItem.item_name],
-                  ['Serial Number', viewItem.serial_number || '\u2014'],
+                  ['Serial Number', viewItem.serial_number || '—'],
                   ['Category', viewItem.category_name],
                   ['Division', viewItem.division_name || '—'],
                   ['Unit', viewItem.unit],
-                  ['Quantity', viewItem.quantity],
+                  ['Quantity', `${viewItem.quantity} ${viewItem.unit}`],
                   ['Reorder Point', viewItem.reorder_point],
+                  ['Defective Qty', parseInt(viewItem.defective_qty ?? viewItem.defectiveQty ?? 0) || 0],
+                  ['Returnable', (viewItem.is_returnable ?? viewItem.returnable) ? 'Yes' : 'No'],
                   ['Unit Price', viewItem.unit_price ? `₱${parseFloat(viewItem.unit_price).toLocaleString()}` : '—'],
+                  ['Defective Notes', viewItem.notes || '—'],
                   ['Description', viewItem.description || '—'],
                 ].map(([label, val]) => (
                   <div key={label} className="flex justify-between border-b border-gray-50 pb-2">
@@ -607,7 +759,29 @@ export default function InventoryPage() {
             </div>
           </div>
         )}
-      </div>
-    </Layout>
+
+        {confirmDialog && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-2">{confirmDialog.title}</h2>
+              <p className="text-sm text-gray-600 mb-5">{confirmDialog.message}</p>
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setConfirmDialog(null)}
+                  className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                  Cancel
+                </button>
+                <button onClick={confirmDialog.onConfirm}
+                  className={`px-4 py-2 text-sm text-white rounded-lg ${
+                    confirmDialog.variant === 'danger'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-orange-500 hover:bg-orange-600'
+                  }`}>
+                  {confirmDialog.confirmLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+    </div>
   );
 }

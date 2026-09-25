@@ -14,6 +14,9 @@ CREATE TABLE users (
   full_name VARCHAR(150) NOT NULL,
   email VARCHAR(150),
   contact VARCHAR(50),
+  division_id INT,
+  reset_token VARCHAR(128),
+  reset_expires_at TIMESTAMP WITH TIME ZONE,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT NOW()
 );
@@ -25,6 +28,10 @@ CREATE TABLE divisions (
 INSERT INTO divisions (division_name) VALUES
 ('Administrative'),('Finance'),('Student Services'),
 ('Registrar and Records'),('Training and Assessment');
+
+ALTER TABLE users
+  ADD CONSTRAINT users_division_id_fkey
+  FOREIGN KEY (division_id) REFERENCES divisions(division_id);
 
 CREATE TABLE categories (
   category_id SERIAL PRIMARY KEY,
@@ -41,7 +48,12 @@ CREATE TABLE inventory_items (
   unit_of_measure VARCHAR(50),
   quantity_on_hand INT NOT NULL DEFAULT 0,
   reorder_level INT NOT NULL DEFAULT 10,
+  serial_number VARCHAR(100),
+  defective_quantity INT NOT NULL DEFAULT 0,
+  is_returnable BOOLEAN DEFAULT FALSE,
   unit_cost NUMERIC(10,2),
+  description TEXT,
+  notes TEXT,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT NOW()
 );
@@ -52,6 +64,7 @@ CREATE TABLE borrow_transactions (
   user_id INT NOT NULL REFERENCES users(user_id),
   division_id INT NOT NULL REFERENCES divisions(division_id),
   quantity_borrowed INT NOT NULL,
+  borrower_name VARCHAR(150) DEFAULT '',
   borrow_date DATE NOT NULL DEFAULT CURRENT_DATE,
   expected_return_date DATE,
   actual_return_date DATE,
@@ -71,14 +84,35 @@ CREATE TABLE return_transactions (
 );
 
 CREATE TABLE audit_log (
-  log_id SERIAL PRIMARY KEY,
+  audit_id BIGSERIAL PRIMARY KEY,
   user_id INT REFERENCES users(user_id),
-  action_type VARCHAR(20) NOT NULL,
-  affected_table VARCHAR(100),
-  affected_record_id INT,
-  old_value JSONB,
-  new_value JSONB,
+  username VARCHAR(100),
+  action VARCHAR(30) NOT NULL,
+  table_name VARCHAR(100) NOT NULL,
+  record_id VARCHAR(100),
+  old_values JSONB,
+  new_values JSONB,
+  ip_address INET,
+  user_agent TEXT,
+  request_id VARCHAR(100),
+  success BOOLEAN DEFAULT TRUE,
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  entry_hash VARCHAR(64),
+  previous_hash VARCHAR(64),
   timestamp TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE login_audit (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(user_id),
+  username VARCHAR(100) NOT NULL,
+  action VARCHAR(20) NOT NULL,
+  failure_reason VARCHAR(40),
+  login_time TIMESTAMP DEFAULT NOW(),
+  logout_time TIMESTAMP,
+  ip_address VARCHAR(45),
+  user_agent TEXT
 );
 
 
@@ -100,6 +134,8 @@ CREATE TABLE requisition_items (
   item_id INT NOT NULL REFERENCES inventory_items(item_id),
   quantity_requested INT NOT NULL,
   quantity_approved INT,
+  quantity_issued INT NOT NULL DEFAULT 0,
+  purpose TEXT,
   status VARCHAR(20) DEFAULT 'Pending'
 );
 
@@ -121,6 +157,24 @@ CREATE TABLE forecast_data (
   days_to_depletion INT,
   risk_level VARCHAR(20),
   created_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE borrow_transactions
+  ADD COLUMN requisition_id INT REFERENCES requisitions(requisition_id);
+
+CREATE TABLE incident_reports (
+  incident_id SERIAL PRIMARY KEY,
+  item_id INT REFERENCES inventory_items(item_id) ON DELETE SET NULL,
+  incident_type VARCHAR(30) NOT NULL,
+  incident_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  reported_by INT NOT NULL REFERENCES users(user_id),
+  quantity_affected INT NOT NULL DEFAULT 1,
+  description TEXT NOT NULL,
+  investigation_remarks TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'Open',
+  reviewed_by INT REFERENCES users(user_id),
+  reviewed_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 
