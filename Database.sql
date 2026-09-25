@@ -105,7 +105,7 @@ CREATE TABLE audit_log (
 
 CREATE TABLE login_audit (
   id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(user_id),
+  user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
   username VARCHAR(100) NOT NULL,
   action VARCHAR(20) NOT NULL,
   failure_reason VARCHAR(40),
