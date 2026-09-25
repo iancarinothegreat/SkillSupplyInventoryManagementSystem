@@ -61,7 +61,7 @@ CREATE TABLE inventory_items (
 CREATE TABLE borrow_transactions (
   borrow_id SERIAL PRIMARY KEY,
   item_id INT NOT NULL REFERENCES inventory_items(item_id),
-  user_id INT NOT NULL REFERENCES users(user_id),
+  user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
   division_id INT NOT NULL REFERENCES divisions(division_id),
   quantity_borrowed INT NOT NULL,
   borrower_name VARCHAR(150) DEFAULT '',
@@ -79,13 +79,13 @@ CREATE TABLE return_transactions (
   quantity_returned INT NOT NULL,
   condition_returned VARCHAR(20) DEFAULT 'Good',
   return_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  processed_by INT REFERENCES users(user_id),
+  processed_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   notes TEXT
 );
 
 CREATE TABLE audit_log (
   audit_id BIGSERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(user_id),
+  user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
   username VARCHAR(100),
   action VARCHAR(30) NOT NULL,
   table_name VARCHAR(100) NOT NULL,
@@ -118,11 +118,11 @@ CREATE TABLE login_audit (
 
 CREATE TABLE requisitions (
   requisition_id SERIAL PRIMARY KEY,
-  user_id INT NOT NULL REFERENCES users(user_id),
+  user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
   division_id INT NOT NULL REFERENCES divisions(division_id),
   status VARCHAR(20) DEFAULT 'Pending',
   requested_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  approved_by INT REFERENCES users(user_id),
+  approved_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   approval_date DATE,
   approval_remarks TEXT,
   created_at TIMESTAMP DEFAULT NOW()
@@ -167,12 +167,12 @@ CREATE TABLE incident_reports (
   item_id INT REFERENCES inventory_items(item_id) ON DELETE SET NULL,
   incident_type VARCHAR(30) NOT NULL,
   incident_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  reported_by INT NOT NULL REFERENCES users(user_id),
+  reported_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   quantity_affected INT NOT NULL DEFAULT 1,
   description TEXT NOT NULL,
   investigation_remarks TEXT,
   status VARCHAR(20) NOT NULL DEFAULT 'Open',
-  reviewed_by INT REFERENCES users(user_id),
+  reviewed_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   reviewed_at TIMESTAMP,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
