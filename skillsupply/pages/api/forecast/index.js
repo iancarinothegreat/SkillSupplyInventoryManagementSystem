@@ -1,33 +1,77 @@
 import { query } from '../../../lib/db.js';
 import { withAuth } from '../../../lib/rbac.js';
-import { computeSMA } from '../../../lib/sma.js';
 
 async function handler(req, res) {
   try {
-    const windowMonths = parseInt(req.query.window) || 3;
-    const items = await query(
-      `SELECT i.item_id, i.item_name, i.quantity_on_hand AS stock, i.unit_of_measure, i.reorder_level AS reorder_point, c.category_name
+    const requestedWindow = Number.parseInt(req.query.window, 10);
+    const windowMonths = Number.isFinite(requestedWindow)
+      ? Math.min(Math.max(requestedWindow, 1), 24)
+      : 3;
+
+    // Calculate all item SMAs in one query. The previous implementation ran
+    // multiple queries per item concurrently, which could exhaust Supabase's
+    // connection pool on Vercel.
+    const result = await query(
+      `WITH monthly_consumption AS (
+         SELECT bt.item_id,
+                DATE_TRUNC('month', bt.created_at) AS month,
+                SUM(bt.quantity_borrowed)::numeric AS consumed
+         FROM borrow_transactions bt
+         WHERE bt.created_at >= NOW() - ($1::int * INTERVAL '1 month')
+         GROUP BY bt.item_id, DATE_TRUNC('month', bt.created_at)
+
+         UNION ALL
+
+         SELECT ri.item_id,
+                DATE_TRUNC('month', r.requested_date) AS month,
+                SUM(COALESCE(NULLIF(ri.quantity_issued, 0), ri.quantity_approved, ri.quantity_requested))::numeric AS consumed
+         FROM requisition_items ri
+         JOIN requisitions r ON r.requisition_id = ri.requisition_id
+         WHERE r.status = 'Approved'
+           AND r.requested_date >= NOW() - ($1::int * INTERVAL '1 month')
+         GROUP BY ri.item_id, DATE_TRUNC('month', r.requested_date)
+       ),
+       monthly_totals AS (
+         SELECT item_id, month, SUM(consumed) AS consumed
+         FROM monthly_consumption
+         GROUP BY item_id, month
+       ),
+       item_smas AS (
+         SELECT item_id, AVG(consumed) AS sma
+         FROM monthly_totals
+         GROUP BY item_id
+       )
+       SELECT i.item_id,
+              i.item_name,
+              COALESCE(i.quantity_on_hand, 0) AS stock,
+              i.unit_of_measure,
+              COALESCE(i.reorder_level, 0) AS reorder_point,
+              c.category_name,
+              COALESCE(s.sma, 0) AS sma
        FROM inventory_items i
        LEFT JOIN categories c ON i.category_id = c.category_id
-       WHERE i.is_active=true`
+       LEFT JOIN item_smas s ON s.item_id = i.item_id
+       WHERE i.is_active = true`
+      , [windowMonths]
     );
 
-    const forecasts = await Promise.all(
-      items.rows.map(async item => {
-        const sma = await computeSMA(item.item_id, windowMonths);
-        return {
-          item_id: item.item_id,
-          item_name: item.item_name,
-          stock: sma.stock ?? item.stock ?? 0,
-          unit_of_measure: item.unit_of_measure,
-          reorder_point: item.reorder_point ?? 0,
-          category_name: item.category_name,
-          sma: sma.sma,
-          days_left: sma.daysLeft,
-          severity: sma.severity,
-        };
-      })
-    );
+    const forecasts = result.rows.map(item => {
+      const stock = Number(item.stock) || 0;
+      const sma = Math.round((Number(item.sma) || 0) * 10) / 10;
+      const daysLeft = sma > 0 ? Math.round((stock / sma) * 30) : null;
+
+      return {
+        item_id: item.item_id,
+        item_name: item.item_name,
+        stock,
+        unit_of_measure: item.unit_of_measure,
+        reorder_point: Number(item.reorder_point) || 0,
+        category_name: item.category_name,
+        sma,
+        days_left: daysLeft,
+        severity: daysLeft === null ? 'ok' : daysLeft <= 7 ? 'critical' : daysLeft <= 30 ? 'warning' : 'ok',
+      };
+    });
 
     forecasts.sort((a, b) => a.item_name.localeCompare(b.item_name));
     return res.status(200).json(forecasts);
