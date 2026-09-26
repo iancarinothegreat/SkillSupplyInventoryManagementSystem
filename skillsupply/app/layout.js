@@ -1,5 +1,7 @@
 import "./globals.css";
 import AppShell from "../components/AppShell";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata = {
   title: "MMTVTC",
@@ -11,6 +13,8 @@ export default function RootLayout({ children }) {
     <html lang="en" className="h-full antialiased">
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <AppShell>{children}</AppShell>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
