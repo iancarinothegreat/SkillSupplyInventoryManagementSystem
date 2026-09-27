@@ -133,6 +133,9 @@ export default function LoginPage() {
         <p className="text-[#6a93b8] text-xs text-center leading-relaxed">
           Mandaluyong Manpower Technical-Vocational<br />Training Center
         </p>
+        <p className="text-[#6a93b8] text-xs text-center mt-2">
+          For Government Use Only
+        </p>
       </div>
 
       {/* ───── Right Panel ───── */}
