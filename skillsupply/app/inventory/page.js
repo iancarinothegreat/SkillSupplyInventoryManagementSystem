@@ -281,14 +281,34 @@ export default function InventoryPage() {
     }
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this item?')) return;
-    const token = sessionStorage.getItem('token');
-    await fetch(`/api/inventory/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
+  function handleDelete(id, itemName) {
+    setConfirmDialog({
+      title: 'Delete Inventory Item',
+      message: `Are you sure you want to delete “${itemName}”? This action cannot be undone.`,
+      confirmLabel: 'Yes, delete item',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        const token = sessionStorage.getItem('token');
+        try {
+          const res = await fetch(`/api/inventory/${id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            setSuccess('Item deleted successfully.');
+            setTimeout(() => setSuccess(''), 5000);
+            fetchItems();
+          } else {
+            setError('Failed to delete item.');
+            setTimeout(() => setError(''), 5000);
+          }
+        } catch {
+          setError('Network error while deleting item.');
+          setTimeout(() => setError(''), 5000);
+        }
+      }
     });
-    fetchItems();
   }
 
   function getStockStatus(item) {
@@ -564,7 +584,7 @@ export default function InventoryPage() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleDelete(item.id)}
+                            onClick={() => handleDelete(item.id, item.item_name)}
                             className="p-1.5 rounded-md text-gray-500 hover:text-red-600 hover:bg-red-50 transition"
                             title="Delete"
                           >
