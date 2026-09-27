@@ -10,6 +10,13 @@ export default function AuditLogsPage() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState("");
   const [dateRange, setDateRange] = useState({ from: "", to: "" });
+  const [totals, setTotals] = useState({
+    total_logins: 0,
+    total_logouts: 0,
+    failed_logins: 0,
+    unique_users: 0,
+    total_events: 0,
+  });
 
   const fetchLoginAudit = useCallback(async () => {
     try {
@@ -23,7 +30,14 @@ export default function AuditLogsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load audit logs");
       setError("");
-      setLoginData(Array.isArray(data) ? data : []);
+      setLoginData(Array.isArray(data) ? data : (data.rows || []));
+      setTotals(data.totals || {
+        total_logins: 0,
+        total_logouts: 0,
+        failed_logins: 0,
+        unique_users: 0,
+        total_events: 0,
+      });
     } catch (err) {
       console.error(err);
       setError(err.message || "Failed to load audit logs");
@@ -39,10 +53,10 @@ export default function AuditLogsPage() {
     return () => clearInterval(refreshTimer);
   }, [fetchLoginAudit]);
 
-  const totalLogins = loginData.filter((d) => d.action === "LOGIN").length;
-  const failedLogins = loginData.filter((d) => d.action === "LOGIN_FAILED").length;
-  const totalLogouts = loginData.filter((d) => d.action === "LOGOUT" || d.logout_time_display).length;
-  const uniqueUsers = new Set(loginData.filter((d) => d.user_id != null).map((d) => d.user_id)).size;
+  const totalLogins = Number(totals.total_logins) || 0;
+  const failedLogins = Number(totals.failed_logins) || 0;
+  const totalLogouts = Number(totals.total_logouts) || 0;
+  const uniqueUsers = Number(totals.unique_users) || 0;
   const failureReason = (reason) => ({
     WRONG_PASSWORD: "Wrong password",
     ACCOUNT_LOCKED: "Account locked/inactive",
@@ -71,7 +85,7 @@ export default function AuditLogsPage() {
               <KpiCard label="TOTAL LOGOUTS" value={totalLogouts} />
               <KpiCard label="FAILED LOGINS" value={failedLogins} />
               <KpiCard label="UNIQUE USERS" value={uniqueUsers} />
-              <KpiCard label="TOTAL EVENTS" value={loginData.length} />
+              <KpiCard label="TOTAL EVENTS" value={Number(totals.total_events) || 0} />
             </>
           )}
         </div>

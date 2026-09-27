@@ -42,7 +42,29 @@ async function handler(req, res) {
         LIMIT 100
       `, params);
 
-      return res.status(200).json(result.rows);
+      // Keep the table limited to the newest 100 rows for performance, but
+      // calculate the KPI totals from the complete filtered audit history.
+      const totalsResult = await query(`
+        SELECT
+          COUNT(*) FILTER (WHERE action = 'LOGIN')::int AS total_logins,
+          COUNT(*) FILTER (WHERE action = 'LOGOUT')::int AS total_logouts,
+          COUNT(*) FILTER (WHERE action = 'LOGIN_FAILED')::int AS failed_logins,
+          COUNT(DISTINCT user_id) FILTER (WHERE user_id IS NOT NULL)::int AS unique_users,
+          COUNT(*)::int AS total_events
+        FROM login_audit
+        ${whereClause}
+      `, params);
+
+      return res.status(200).json({
+        rows: result.rows,
+        totals: totalsResult.rows[0] || {
+          total_logins: 0,
+          total_logouts: 0,
+          failed_logins: 0,
+          unique_users: 0,
+          total_events: 0,
+        },
+      });
     } catch (err) {
       console.error(err);
       return res.status(500).json({ error: 'Server error' });
