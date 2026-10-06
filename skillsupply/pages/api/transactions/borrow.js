@@ -40,6 +40,14 @@ async function handler(req, res) {
       );
 
       await client.query(`
+        INSERT INTO consumption_tracking
+          (item_id, division_id, quantity_consumed, consumption_date)
+        VALUES ($1, $2, $3, CURRENT_DATE)
+        ON CONFLICT (item_id, division_id, consumption_date)
+        DO UPDATE SET quantity_consumed = consumption_tracking.quantity_consumed + EXCLUDED.quantity_consumed
+      `, [item_id, division_id, quantity]);
+
+      await client.query(`
         INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
         VALUES ($1,'CREATE','borrow_transactions',$2,$3)
       `, [req.user.user_id, result.rows[0].borrow_id, JSON.stringify(result.rows[0])]);

@@ -43,6 +43,7 @@ async function handler(req, res) {
        )
        SELECT i.item_id,
               i.item_name,
+              i.division_id,
               COALESCE(i.quantity_on_hand, 0) AS stock,
               i.unit_of_measure,
               COALESCE(i.reorder_level, 0) AS reorder_point,
@@ -63,6 +64,7 @@ async function handler(req, res) {
       return {
         item_id: item.item_id,
         item_name: item.item_name,
+        division_id: item.division_id,
         stock,
         unit_of_measure: item.unit_of_measure,
         reorder_point: Number(item.reorder_point) || 0,
@@ -72,6 +74,34 @@ async function handler(req, res) {
         severity: daysLeft === null ? 'ok' : daysLeft <= 7 ? 'critical' : daysLeft <= 30 ? 'warning' : 'ok',
       };
     });
+
+    const storedForecasts = forecasts.filter((forecast) => forecast.division_id !== null && forecast.division_id !== undefined);
+    if (storedForecasts.length > 0) {
+      const placeholders = storedForecasts.map((forecast, index) => {
+        const offset = index * 6;
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`;
+      }).join(', ');
+
+      await query(`
+        INSERT INTO forecast_data
+          (item_id, division_id, forecast_date, sma_value, days_to_depletion, risk_level)
+        VALUES ${placeholders}
+        ON CONFLICT (item_id, division_id, forecast_date)
+        DO UPDATE SET
+          sma_value = EXCLUDED.sma_value,
+          days_to_depletion = EXCLUDED.days_to_depletion,
+          risk_level = EXCLUDED.risk_level
+      `, storedForecasts.flatMap((forecast) => {
+        return [
+          forecast.item_id,
+          forecast.division_id,
+          new Date().toISOString().slice(0, 10),
+          forecast.sma,
+          forecast.days_left,
+          forecast.severity === 'critical' ? 'Critical' : forecast.severity === 'warning' ? 'Warning' : 'Safe',
+        ];
+      }));
+    }
 
     forecasts.sort((a, b) => a.item_name.localeCompare(b.item_name));
     return res.status(200).json(forecasts);
