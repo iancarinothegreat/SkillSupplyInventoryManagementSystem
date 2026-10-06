@@ -8,7 +8,7 @@ export const TABLES = [
   'roles', 'users', 'categories', 'divisions', 'inventory_items',
   'borrow_transactions', 'return_transactions', 'requisitions',
   'requisition_items', 'consumption_tracking', 'audit_log', 'login_audit',
-  'incident_reports', 'forecast_data'
+  'forecast_data'
 ];
 
 export function getSupabaseAdmin() {

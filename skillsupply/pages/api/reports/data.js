@@ -148,11 +148,6 @@ const REPORTS = {
     filters: ['division'],
     order: ' ORDER BY f.days_to_depletion ASC',
   },
-  incidents: {
-    title: 'Incident Report',
-    query: `SELECT ir.incident_id AS "ID", i.item_name AS "Item", c.category_name AS "Category", i.unit_of_measure AS "Unit", ir.incident_type AS "Incident Type", ir.incident_date AS "Incident Date", ir.quantity_affected AS "Quantity", u.full_name AS "Reported By", ir.description AS "Description", ir.investigation_remarks AS "Investigation Remarks", ir.status AS "Status", rv.full_name AS "Reviewed By", ir.reviewed_at AS "Reviewed At" FROM incident_reports ir LEFT JOIN inventory_items i ON ir.item_id = i.item_id LEFT JOIN categories c ON i.category_id = c.category_id JOIN users u ON ir.reported_by = u.user_id LEFT JOIN users rv ON ir.reviewed_by = rv.user_id WHERE 1=1`,
-    filters: ['date', 'status'],
-  },
 };
 
 async function handler(req, res) {
@@ -238,8 +233,6 @@ async function handler(req, res) {
             ? 'a.timestamp'
             : report === 'login_audit'
               ? 'la.login_time'
-            : report === 'incidents'
-              ? 'ir.incident_date'
             : report.startsWith('requisition') || report === 'requisitions'
               ? 'r.requested_date'
               : 'bt.borrow_date';
@@ -252,9 +245,7 @@ async function handler(req, res) {
     }
     if (category !== 'all' && definition.filters.includes('category')) query += ` AND c.category_id = ${add(category)}`;
     if (status !== 'all' && definition.filters.includes('status')) {
-      const statusColumn = report === 'incidents'
-        ? 'ir.status'
-        : report.startsWith('requisition') || report === 'requisitions'
+      const statusColumn = report.startsWith('requisition') || report === 'requisitions'
           ? 'r.status'
           : report === 'inventory'
             ? null

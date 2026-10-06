@@ -1,7 +1,6 @@
   'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonChart, SkeletonTableRow } from '@/components/Skeleton';
@@ -45,7 +44,6 @@ const REPORT_TYPES = [
   { group: 'Forecasting', value: 'forecast_risk', label: 'Forecast Risk' },
   { group: 'Administration', value: 'audit', label: 'Audit Trail' },
   { group: 'Administration', value: 'login_audit', label: 'Login Audit Logs' },
-  { group: 'Administration', value: 'incidents', label: 'Incident Report' },
 ];
 
 function formatAuditValue(val, categories, divisions) {
@@ -93,9 +91,6 @@ export default function ReportsPage() {
   const [reportLoading, setReportLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
-  const [incidentUpdating, setIncidentUpdating] = useState(null);
-  const [incidentRemarks, setIncidentRemarks] = useState({});
-  const incidentUpdatedAt = useRef(0);
   const [expandedCell, setExpandedCell] = useState(null);
   const [auditSearch, setAuditSearch] = useState('');
   const [auditAction, setAuditAction] = useState('all');
@@ -124,9 +119,6 @@ export default function ReportsPage() {
     }
     if (report.startsWith('requisition') || report === 'requisitions') {
       return ['Pending', 'Approved', 'Rejected', 'Issued', 'Returned'];
-    }
-    if (report === 'incidents') {
-      return ['Open', 'Investigating', 'Resolved', 'Closed'];
     }
     return [];
   };
@@ -219,7 +211,6 @@ export default function ReportsPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to load report');
-      if (selectedReport === 'incidents' && requestStartedAt < incidentUpdatedAt.current) return;
       setReportTitle(data.title);
       setReportRows(Array.isArray(data.rows) ? data.rows : []);
     } catch (err) {
@@ -237,12 +228,6 @@ export default function ReportsPage() {
   useEffect(() => {
     queueMicrotask(fetchReport);
   }, [fetchReport]);
-
-  useEffect(() => {
-    if (selectedReport !== 'incidents') return undefined;
-    const refreshIncidents = setInterval(() => fetchReport(false), 5000);
-    return () => clearInterval(refreshIncidents);
-  }, [fetchReport, selectedReport]);
 
   const handleExportPDF = async () => {
     setExporting(true);
@@ -309,41 +294,6 @@ export default function ReportsPage() {
       alert('Export error: ' + err.message);
     } finally {
       setExporting(false);
-    }
-  };
-
-  const handleIncidentStatusUpdate = async (incidentId, status, remarks) => {
-    setIncidentUpdating(incidentId);
-    try {
-      const token = getToken();
-      const response = await fetch('/api/incidents', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ incident_id: incidentId, status, investigation_remarks: remarks }),
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to update incident.');
-      }
-      const updatedIncident = await response.json();
-      incidentUpdatedAt.current = Date.now();
-      setReportRows((rows) =>
-        rows.map((row) =>
-          row.ID === incidentId
-            ? {
-                ...row,
-                Status: updatedIncident.status,
-                'Investigation Remarks': updatedIncident.investigation_remarks || null,
-                'Reviewed By': updatedIncident.reviewed_by_name || null,
-                'Reviewed At': updatedIncident.reviewed_at || null,
-              }
-            : row
-        )
-      );
-    } catch (updateError) {
-      alert(updateError.message);
-    } finally {
-      setIncidentUpdating(null);
     }
   };
 
@@ -675,11 +625,6 @@ export default function ReportsPage() {
                         {column.replaceAll('_', ' ')}
                       </th>
                     ))}
-                    {selectedReport === 'incidents' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                        Review
-                      </th>
-                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -717,68 +662,6 @@ export default function ReportsPage() {
                           </td>
                         );
                       })}
-                      {selectedReport === 'incidents' && (
-                        <td className="px-4 py-3">
-                          <div className="min-w-56 space-y-2">
-                            <select
-                              value={incidentRemarks[row.ID]?.status ?? row.Status ?? 'Open'}
-                              disabled={incidentUpdating === row.ID}
-                              onChange={(event) => {
-                                const status = event.target.value;
-                                const remarks =
-                                  incidentRemarks[row.ID]?.remarks ??
-                                  row['Investigation Remarks'] ??
-                                  '';
-                                setIncidentRemarks({
-                                  ...incidentRemarks,
-                                  [row.ID]: { status, remarks },
-                                });
-                              }}
-                              className="w-full rounded-lg border border-gray-200 px-2 py-1 text-xs"
-                            >
-                              {['Open', 'Investigating', 'Resolved', 'Closed'].map((status) => (
-                                <option key={status}>{status}</option>
-                              ))}
-                            </select>
-                            <textarea
-                              rows={2}
-                              value={
-                                incidentRemarks[row.ID]?.remarks ??
-                                row['Investigation Remarks'] ??
-                                ''
-                              }
-                              onChange={(event) =>
-                                setIncidentRemarks({
-                                  ...incidentRemarks,
-                                  [row.ID]: {
-                                    status:
-                                      incidentRemarks[row.ID]?.status ?? row.Status ?? 'Open',
-                                    remarks: event.target.value,
-                                  },
-                                })
-                              }
-                              placeholder="Add investigation remarks..."
-                              className="w-full rounded-lg border border-gray-200 px-2 py-1 text-xs"
-                            />
-                            <button
-                              type="button"
-                              disabled={incidentUpdating === row.ID}
-                              onClick={() =>
-                                handleIncidentStatusUpdate(
-                                  row.ID,
-                                  incidentRemarks[row.ID]?.status ?? row.Status ?? 'Open',
-                                  incidentRemarks[row.ID]?.remarks ??
-                                    row['Investigation Remarks'] ??
-                                    ''
-                                )
-                              }
-                              className="rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              {incidentUpdating === row.ID ? 'Saving...' : 'Save Review'}
-                            </button>
-                          </div>
-                        </td>
-                      )}
                     </tr>
                   ))}
                 </tbody>

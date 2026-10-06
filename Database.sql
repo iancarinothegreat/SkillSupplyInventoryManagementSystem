@@ -162,22 +162,6 @@ CREATE TABLE forecast_data (
 ALTER TABLE borrow_transactions
   ADD COLUMN requisition_id INT REFERENCES requisitions(requisition_id);
 
-CREATE TABLE incident_reports (
-  incident_id SERIAL PRIMARY KEY,
-  item_id INT REFERENCES inventory_items(item_id) ON DELETE SET NULL,
-  incident_type VARCHAR(30) NOT NULL,
-  incident_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  reported_by INT REFERENCES users(user_id) ON DELETE SET NULL,
-  quantity_affected INT NOT NULL DEFAULT 1,
-  description TEXT NOT NULL,
-  investigation_remarks TEXT,
-  status VARCHAR(20) NOT NULL DEFAULT 'Open',
-  reviewed_by INT REFERENCES users(user_id) ON DELETE SET NULL,
-  reviewed_at TIMESTAMP,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-
 CREATE INDEX idx_users_role_id ON users(role_id);
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_inventory_items_category_id ON inventory_items(category_id);
