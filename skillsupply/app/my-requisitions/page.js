@@ -201,8 +201,8 @@ export default function MyRequisitionsPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
-                    {r.remarks && (
-                      <p className="text-xs text-gray-500 mt-1 italic">&quot;{r.remarks}&quot;</p>
+                    {r.approval_remarks && (
+                      <p className="text-xs text-gray-500 mt-1 italic">&quot;{r.approval_remarks}&quot;</p>
                     )}
                   </div>
                 </div>
