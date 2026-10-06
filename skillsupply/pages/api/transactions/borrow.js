@@ -4,11 +4,13 @@ import { withAuth } from '../../../lib/rbac.js';
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { item_id, division_id, quantity_borrowed, expected_return_date, purpose } = req.body;
+  const { item_id, division_id, quantity_borrowed, borrower_name, expected_return_date, purpose } = req.body;
 
   const quantity = Number(quantity_borrowed);
   if (!item_id || !division_id || !Number.isInteger(quantity) || quantity <= 0)
     return res.status(400).json({ error: 'Missing required fields' });
+  if (!borrower_name?.trim())
+    return res.status(400).json({ error: 'Borrower name is required' });
 
   try {
     const txn = await transaction(async (client) => {
@@ -29,10 +31,10 @@ async function handler(req, res) {
 
       const result = await client.query(`
         INSERT INTO borrow_transactions
-          (item_id, user_id, division_id, quantity_borrowed, expected_return_date, purpose)
-        VALUES ($1,$2,$3,$4,$5,$6)
+          (item_id, user_id, division_id, quantity_borrowed, borrower_name, expected_return_date, purpose)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
         RETURNING *
-      `, [item_id, req.user.user_id, division_id, quantity, expected_return_date, purpose]);
+      `, [item_id, req.user.user_id, division_id, quantity, borrower_name.trim(), expected_return_date, purpose]);
 
       await client.query(
         'UPDATE inventory_items SET quantity_on_hand = quantity_on_hand - $1 WHERE item_id=$2',
