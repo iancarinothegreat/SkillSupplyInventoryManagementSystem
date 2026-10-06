@@ -6,5 +6,8 @@
     "build": "npm run build --prefix skillsupply",
     "start": "npm run start --prefix skillsupply",
     "lint": "npm run lint --prefix skillsupply"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.3"
   }
 }
