@@ -7,7 +7,7 @@ async function handler(req, res) {
       const result = await query(`
         SELECT bt.*,
           i.item_name, i.unit_of_measure,
-          u.full_name as borrower_name,
+          COALESCE(NULLIF(bt.borrower_name, ''), u.full_name) AS borrower_name,
           d.division_name
         FROM borrow_transactions bt
         JOIN inventory_items i ON bt.item_id = i.item_id

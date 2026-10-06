@@ -593,6 +593,7 @@ export default function TransactionsPage() {
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
+                {selectedTx.status !== 'Returned' && (
                 <button
                   onClick={async () => {
                     try {
@@ -619,6 +620,7 @@ export default function TransactionsPage() {
                 >
                   Borrowed
                 </button>
+                )}
                 {selectedTx.status !== 'Returned' && (
                   <button
                     onClick={() => {
@@ -633,7 +635,7 @@ export default function TransactionsPage() {
                     Returned
                   </button>
                 )}
-                {selectedTx.status !== 'Overdue' && (
+                {selectedTx.status !== 'Returned' && selectedTx.status !== 'Overdue' && (
                   <button
                     onClick={async () => {
                       try {
