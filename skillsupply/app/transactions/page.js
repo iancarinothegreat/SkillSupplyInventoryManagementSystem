@@ -587,6 +587,12 @@ export default function TransactionsPage() {
                 {selectedTx.purpose && (
                   <div className="flex justify-between"><span className="text-gray-500">Purpose</span><span className="text-right max-w-xs">{selectedTx.purpose}</span></div>
                 )}
+                {selectedTx.condition_returned && (
+                  <div className="flex justify-between"><span className="text-gray-500">Return Condition</span><span>{selectedTx.condition_returned}</span></div>
+                )}
+                {selectedTx.return_remarks && (
+                  <div className="flex justify-between gap-4"><span className="text-gray-500">Return Remarks</span><span className="text-right max-w-xs whitespace-pre-wrap">{selectedTx.return_remarks}</span></div>
+                )}
                 <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                   <span className="text-gray-500">Status</span>
                   {statusBadge(selectedTx.status)}
