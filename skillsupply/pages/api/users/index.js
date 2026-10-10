@@ -14,6 +14,23 @@ function normalizeFullName(value) {
     .join(' ');
 }
 
+async function validateRoleForDivision(role_id, division_id) {
+  const roleId = Number(role_id);
+  if (![1, 2, 3].includes(roleId)) return 'Invalid role selected';
+
+  if (!division_id) return null;
+
+  const division = await query(`SELECT division_name FROM divisions WHERE division_id = $1`, [division_id]);
+  if (division.rows.length === 0) return 'Invalid division selected';
+
+  const divisionName = String(division.rows[0].division_name || '').trim().toLowerCase();
+  if (divisionName !== 'administrative' && roleId !== 1) {
+    return 'Only the Division Staff role can be assigned to this division. Supply Officer and Administrator are limited to the Administrative division.';
+  }
+
+  return null;
+}
+
 async function handler(req, res) {
   if (req.method === 'GET') {
     try {
@@ -35,7 +52,7 @@ async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { username, password, full_name, email, contact, role_id } = req.body;
+    const { username, password, full_name, email, contact, role_id, division_id } = req.body;
     if (!username || !password || !full_name || !role_id)
       return res.status(400).json({ error: 'Missing required fields' });
 
@@ -48,12 +65,15 @@ async function handler(req, res) {
     }
 
     try {
+      const roleError = await validateRoleForDivision(role_id, division_id);
+      if (roleError) return res.status(400).json({ error: roleError });
+
       const hash = await bcrypt.hash(password, 12);
       const result = await query(`
-        INSERT INTO users (username, password_hash, full_name, email, contact, role_id)
-        VALUES ($1,$2,$3,$4,$5,$6)
-        RETURNING user_id, username, full_name, email, role_id
-      `, [username, hash, normalizedFullName, email, contact, role_id]);
+        INSERT INTO users (username, password_hash, full_name, email, contact, role_id, division_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        RETURNING user_id, username, full_name, email, role_id, division_id
+      `, [username, hash, normalizedFullName, email, contact, role_id, division_id || null]);
 
       await query(`
         INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
@@ -83,6 +103,9 @@ async function handler(req, res) {
     }
 
     try {
+      const roleError = await validateRoleForDivision(role_id, division_id);
+      if (roleError) return res.status(400).json({ error: roleError });
+
       const existing = await query(`SELECT * FROM users WHERE user_id = $1`, [user_id]);
       if (existing.rows.length === 0)
         return res.status(404).json({ error: 'User not found' });

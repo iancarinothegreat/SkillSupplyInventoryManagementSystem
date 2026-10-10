@@ -12,6 +12,17 @@ const ROLES = [
 
 const roleMap = { 1: 'Division Staff', 2: 'Supply Officer', 3: 'Administrator' };
 const FULL_NAME_CHARACTERS_PATTERN = /^[A-Za-zÀ-ÖØ-öø-ÿñÑ '.\\-]*$/;
+const ADMIN_DIVISION_NAME = 'administrative';
+
+function isAdministrativeDivision(division) {
+  return String(division?.division_name ?? '').trim().toLowerCase() === ADMIN_DIVISION_NAME;
+}
+
+function rolesForDivision(divisionId, divisions) {
+  const division = divisions.find((d) => String(d.id ?? d.division_id) === String(divisionId));
+  if (isAdministrativeDivision(division)) return ROLES;
+  return ROLES.filter((r) => r.value === '1');
+}
 
 function formatFullName(value) {
   return value
@@ -169,7 +180,7 @@ export default function UsersPage() {
         setForm({ username: '', password: '', full_name: '', email: '', contact: '', role_id: '1', division_id: '' });
         fetchUsers();
       } else {
-        setError(data.message || 'Failed to save user.');
+        setError(data.message || data.error || 'Failed to save user.');
       }
     } catch (err) {
       setError('Server error.');
@@ -222,6 +233,20 @@ export default function UsersPage() {
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
     u.email?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const divisionRoles = rolesForDivision(form.division_id, divisions);
+  const selectedDivision = divisions.find((d) => String(d.id ?? d.division_id) === String(form.division_id));
+  const isAdminDivision = isAdministrativeDivision(selectedDivision);
+  const currentRole = ROLES.find((r) => r.value === String(form.role_id));
+  const visibleRoles = divisionRoles.some((r) => r.value === String(form.role_id))
+    ? divisionRoles
+    : [...divisionRoles, currentRole].filter(Boolean);
+
+  const handleDivisionChange = (value) => {
+    const nextRoles = rolesForDivision(value, divisions);
+    const nextRoleId = nextRoles.some((r) => r.value === String(form.role_id)) ? form.role_id : '1';
+    setForm({ ...form, division_id: value, role_id: nextRoleId });
+  };
 
   return (
     <div className="space-y-6">
@@ -485,16 +510,19 @@ export default function UsersPage() {
                     onChange={(e) => setForm({ ...form, role_id: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {ROLES.map((r) => (
+                    {visibleRoles.map((r) => (
                       <option key={r.value} value={r.value}>{r.label}</option>
                     ))}
                   </select>
+                  {!isAdminDivision && form.division_id !== '' && (
+                    <p className="mt-1 text-xs text-gray-500">Only Division Staff is available for this division.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
                   <select
                     value={form.division_id}
-                    onChange={(e) => setForm({ ...form, division_id: e.target.value })}
+                    onChange={(e) => handleDivisionChange(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">None</option>

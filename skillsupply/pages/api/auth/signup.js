@@ -16,7 +16,7 @@ function normalizeFullName(value) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { full_name, username, email, contact, password, role_id, division_id } = req.body;
+  const { full_name, username, email, contact, password, division_id } = req.body;
 
   const normalizedUsername = username.trim().toLowerCase();
   const normalizedFullName = normalizeFullName(full_name);
@@ -56,8 +56,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Password must be at least 8 characters and include at least one special character.' });
   }
 
-  const validRoles = [1, 2];
-  const selectedRole = validRoles.includes(Number(role_id)) ? Number(role_id) : 1;
+  const selectedRole = 1;
 
   try {
     const existing = await query(`SELECT user_id FROM users WHERE username = $1`, [normalizedUsername]);

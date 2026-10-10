@@ -4,11 +4,6 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 
-const ROLES = [
-  { value: '1', label: 'Division Staff' },
-  { value: '2', label: 'Supply Officer' },
-];
-
 const USERNAME_PATTERN = /^[a-zñ]\.[a-zñ][a-zñ]+$/;
 const PASSWORD_PATTERN = /^(?=.*[^A-Za-z0-9]).{8,}$/;
 const FULL_NAME_CHARACTERS_PATTERN = /^[A-Za-zÀ-ÖØ-öø-ÿñÑ '.\\-]*$/;
@@ -34,7 +29,6 @@ export default function SignupPage() {
   const [contact, setContact] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [roleId, setRoleId] = useState('1');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -93,7 +87,7 @@ export default function SignupPage() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: fullName, username: normalizedUsername, email, contact, password, role_id: roleId, division_id: divisionId }),
+        body: JSON.stringify({ full_name: fullName, username: normalizedUsername, email, contact, password, division_id: divisionId }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -250,19 +244,6 @@ export default function SignupPage() {
                 maxLength={11}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
-              <select
-                value={roleId}
-                onChange={(e) => setRoleId(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              >
-                {ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
             </div>
 
             <div>
