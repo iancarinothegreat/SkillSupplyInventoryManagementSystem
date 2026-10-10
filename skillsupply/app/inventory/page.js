@@ -515,7 +515,6 @@ export default function InventoryPage() {
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-20">Item No.</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Item Name</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Category</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Division</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Unit</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-48">Stock Level</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Quantity</th>
@@ -529,10 +528,10 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonTableRow key={i} widths={['w-10', 'w-28', 'w-20', 'w-20', 'w-12', 'w-28', 'w-12', 'w-10', 'w-12', 'w-16', 'w-16', 'w-16']} />
+                  <SkeletonTableRow key={i} widths={['w-10', 'w-28', 'w-20', 'w-12', 'w-28', 'w-12', 'w-10', 'w-12', 'w-16', 'w-16', 'w-16']} />
                 ))
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={12} className="text-center py-10 text-sm text-gray-400">No items found</td></tr>
+                <tr><td colSpan={11} className="text-center py-10 text-sm text-gray-400">No items found</td></tr>
               ) : (
                 filtered.map((item, index) => {
                   const status = getStockStatus(item);
@@ -541,7 +540,6 @@ export default function InventoryPage() {
                       <td className="px-4 py-3 text-sm text-gray-600">{index + 1}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-800">{item.item_name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{item.category_name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{item.division_name || '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{item.unit}</td>
                       <td className="px-4 py-3">
                         <div className="w-full bg-gray-200 rounded-full h-2">
@@ -627,25 +625,14 @@ export default function InventoryPage() {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Category</label>
-                    <select required value={form.category_id ?? ''}
-                      onChange={e => setForm({ ...form, category_id: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select</option>
-                      {categories.map(c => <option key={c.id ?? c.category_id} value={c.id ?? c.category_id}>{c.category_name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Division</label>
-                    <select value={form.division_id ?? ''}
-                      onChange={e => setForm({ ...form, division_id: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select</option>
-                      {divisions.map(d => <option key={d.id ?? d.division_id} value={d.id ?? d.division_id}>{d.division_name}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Category</label>
+                  <select required value={form.category_id ?? ''}
+                    onChange={e => setForm({ ...form, category_id: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select</option>
+                    {categories.map(c => <option key={c.id ?? c.category_id} value={c.id ?? c.category_id}>{c.category_name}</option>)}
+                  </select>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
