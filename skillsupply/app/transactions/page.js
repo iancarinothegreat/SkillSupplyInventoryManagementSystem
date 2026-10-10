@@ -82,6 +82,25 @@ export default function TransactionsPage() {
     fetchDivisions();
   }, [fetchTransactions, fetchInventory, fetchDivisions]);
 
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return;
+      fetchTransactions();
+      fetchInventory();
+    };
+    const interval = setInterval(refresh, 10000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [fetchTransactions, fetchInventory]);
+
 
   useEffect(() => {
     const querySearch = searchParams?.get('search') || '';

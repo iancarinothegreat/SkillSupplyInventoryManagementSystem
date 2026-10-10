@@ -107,6 +107,25 @@ export default function BorrowPage() {
   }, [fetchTransactions, fetchInventory, fetchDivisions, fetchMe]);
 
   useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return;
+      fetchTransactions();
+      fetchInventory();
+    };
+    const interval = setInterval(refresh, 10000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [fetchTransactions, fetchInventory]);
+
+  useEffect(() => {
     if (success) {
       const timer = setTimeout(() => setSuccess(''), 5000);
       return () => clearTimeout(timer);
@@ -124,6 +143,8 @@ export default function BorrowPage() {
     setError('');
     setSuccess('');
     fetchMe();
+    fetchInventory();
+    fetchTransactions();
     setShowModal(true);
   };
 
