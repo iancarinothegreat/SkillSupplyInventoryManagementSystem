@@ -45,9 +45,14 @@ async function handler(req, res) {
         VALUES ($1,'CREATE','return_transactions',$2,$3)
       `, [req.user.user_id, borrow_id, JSON.stringify({ borrow_id, item_id: current.item_id, quantity_returned: current.quantity_borrowed, condition_returned: condition })]);
 
-      if (condition === 'Good' || condition === 'Damaged') {
+      if (condition === 'Good') {
         await client.query(
           'UPDATE inventory_items SET quantity_on_hand = quantity_on_hand + $1 WHERE item_id=$2',
+          [current.quantity_borrowed, current.item_id]
+        );
+      } else if (condition === 'Damaged') {
+        await client.query(
+          'UPDATE inventory_items SET defective_quantity = COALESCE(defective_quantity, 0) + $1 WHERE item_id=$2',
           [current.quantity_borrowed, current.item_id]
         );
       }

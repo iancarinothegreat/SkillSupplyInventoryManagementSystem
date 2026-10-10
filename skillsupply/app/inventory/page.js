@@ -519,6 +519,7 @@ export default function InventoryPage() {
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-48">Stock Level</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Quantity</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Defective Qty</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Total Quantity</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Returnable</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Status</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Unit Cost</th>
@@ -528,10 +529,10 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonTableRow key={i} widths={['w-10', 'w-28', 'w-20', 'w-12', 'w-28', 'w-12', 'w-10', 'w-12', 'w-16', 'w-16', 'w-16']} />
+                  <SkeletonTableRow key={i} widths={['w-10', 'w-28', 'w-20', 'w-12', 'w-28', 'w-12', 'w-10', 'w-12', 'w-12', 'w-16', 'w-16', 'w-16']} />
                 ))
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={11} className="text-center py-10 text-sm text-gray-400">No items found</td></tr>
+                <tr><td colSpan={12} className="text-center py-10 text-sm text-gray-400">No items found</td></tr>
               ) : (
                 filtered.map((item, index) => {
                   const status = getStockStatus(item);
@@ -551,6 +552,9 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{item.quantity}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{parseInt(item.defective_qty ?? item.defectiveQty ?? 0) || 0}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {item.total_quantity ?? ((item.quantity ?? 0) + (parseInt(item.defective_qty ?? item.defectiveQty ?? 0) || 0))}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{(item.is_returnable ?? item.returnable) ? 'Yes' : 'No'}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${status.color}`}>
@@ -740,6 +744,7 @@ export default function InventoryPage() {
                   ['Division', viewItem.division_name || '—'],
                   ['Unit', viewItem.unit],
                   ['Quantity', `${viewItem.quantity} ${viewItem.unit}`],
+                  ['Total Quantity', `${viewItem.total_quantity ?? ((viewItem.quantity ?? 0) + (parseInt(viewItem.defective_qty ?? viewItem.defectiveQty ?? 0) || 0))} ${viewItem.unit}`],
                   ['Reorder Point', viewItem.reorder_point],
                   ['Defective Qty', parseInt(viewItem.defective_qty ?? viewItem.defectiveQty ?? 0) || 0],
                   ['Returnable', (viewItem.is_returnable ?? viewItem.returnable) ? 'Yes' : 'No'],

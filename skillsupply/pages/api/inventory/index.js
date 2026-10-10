@@ -11,7 +11,8 @@ async function handler(req, res) {
     try {
       const result = await query(`
         SELECT i.item_id, i.item_name, i.serial_number, i.category_id, i.division_id, i.unit_of_measure,
-          i.quantity_on_hand, i.reorder_level, i.defective_quantity AS defective_qty, i.is_returnable, i.unit_cost, i.description, i.notes, i.is_active, i.created_at,
+          i.quantity_on_hand, i.reorder_level, i.defective_quantity AS defective_qty,
+          i.quantity_on_hand + COALESCE(i.defective_quantity, 0) AS total_quantity, i.is_returnable, i.unit_cost, i.description, i.notes, i.is_active, i.created_at,
           c.category_name,
           d.division_name,
           CASE

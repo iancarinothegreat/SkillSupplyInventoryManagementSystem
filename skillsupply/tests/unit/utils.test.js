@@ -25,6 +25,16 @@ describe('Inventory utility functions', () => {
     expect(result.label).toBe('Critical');
   });
 
+  it('computes status from usable quantity only, ignoring defective units', () => {
+    const result = getStockStatus({
+      quantity: 5,
+      reorder_point: 10,
+      defective_quantity: 20
+    });
+
+    expect(result.label).toBe('Critical');
+  });
+
   it('normalizes inventory database fields', () => {
     const result = normalizeInventoryItem({
       item_id: 10,
@@ -35,5 +45,16 @@ describe('Inventory utility functions', () => {
     expect(result.id).toBe(10);
     expect(result.quantity).toBe(25);
     expect(result.unit).toBe('pieces');
+  });
+
+  it('computes total quantity as usable plus defective', () => {
+    const result = normalizeInventoryItem({
+      item_id: 10,
+      quantity_on_hand: 25,
+      defective_quantity: 4,
+      unit_of_measure: 'pieces'
+    });
+
+    expect(result.total_quantity).toBe(29);
   });
 });
