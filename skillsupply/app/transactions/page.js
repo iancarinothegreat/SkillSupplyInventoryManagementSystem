@@ -124,7 +124,7 @@ export default function TransactionsPage() {
         fetchTransactions();
         fetchInventory();
       } else {
-        setError(data.message || 'Failed to record borrow.');
+        setError(data.error || data.message || 'Failed to record borrow.');
       }
     } catch (err) {
       setError('Server error.');
@@ -156,7 +156,7 @@ export default function TransactionsPage() {
         fetchTransactions();
         fetchInventory();
       } else {
-        setError(data.message || 'Failed to process return.');
+        setError(data.error || data.message || 'Failed to process return.');
       }
     } catch (err) {
       setError('Server error.');
@@ -169,7 +169,7 @@ export default function TransactionsPage() {
   const borrowedCount = transactions.filter(t => t.status === 'Borrowed' || t.status === 'Issued').length;
   const overdueCount = transactions.filter(t => t.status === 'Overdue').length;
   const returnedCount = transactions.filter(t => t.status === 'Returned').length;
-  const pendingTransactions = transactions.filter(t => t.status === 'Borrowed' || t.status === 'Issued' || t.status === 'Overdue');
+  const pendingTransactions = transactions.filter(t => t.status !== 'Returned' && t.status !== 'Cancelled');
 
   const filteredTransactions = transactions.filter(t => {
     const quantityText = String(t.quantity ?? t.quantity_borrowed ?? '');

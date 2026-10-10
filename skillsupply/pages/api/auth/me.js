@@ -7,10 +7,11 @@ async function handler(req, res) {
   try {
     const result = await query(`
             SELECT u.user_id, u.username, u.full_name, u.email, u.contact,
-              u.is_active, u.created_at,
+              u.is_active, u.created_at, u.division_id, d.division_name,
              r.role_name, r.hierarchy_level
       FROM users u
       JOIN roles r ON u.role_id = r.role_id
+      LEFT JOIN divisions d ON u.division_id = d.division_id
       WHERE u.user_id = $1 AND u.is_active = true
     `, [req.user.user_id]);
 

@@ -31,8 +31,8 @@ async function handler(req, res) {
 
       const result = await client.query(`
         INSERT INTO borrow_transactions
-          (item_id, user_id, division_id, quantity_borrowed, borrower_name, expected_return_date, purpose)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)
+          (item_id, user_id, division_id, quantity_borrowed, borrower_name, expected_return_date, purpose, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,'Borrowed')
         RETURNING *
       `, [item_id, req.user.user_id, division_id, quantity, borrower_name.trim(), expected_return_date, purpose]);
 
@@ -63,4 +63,4 @@ async function handler(req, res) {
   }
 }
 
-export default withAuth(handler, 2);
+export default withAuth(handler, 1);

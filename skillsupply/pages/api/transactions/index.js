@@ -4,6 +4,7 @@ import { withAuth } from '../../../lib/rbac.js';
 async function handler(req, res) {
   if (req.method === 'GET') {
     try {
+      const restricted = Number(req.user.hierarchy_level) < 2;
       const result = await query(`
         SELECT bt.*,
           i.item_name, i.unit_of_measure,
@@ -22,8 +23,9 @@ async function handler(req, res) {
           ORDER BY return_id DESC
           LIMIT 1
         ) rt ON true
+        ${restricted ? 'WHERE bt.user_id = $1' : ''}
         ORDER BY bt.created_at DESC
-      `);
+      `, restricted ? [req.user.user_id] : []);
       return res.status(200).json(result.rows);
     } catch (err) {
       console.error(err);
@@ -32,6 +34,9 @@ async function handler(req, res) {
   }
 
   if (req.method === 'PUT') {
+    if (Number(req.user.hierarchy_level) < 2)
+      return res.status(403).json({ error: 'Forbidden' });
+
     const { id } = req.query;
     const { status } = req.body;
     if (!['Borrowed', 'Returned', 'Overdue'].includes(status))
@@ -60,4 +65,4 @@ async function handler(req, res) {
   return res.status(405).end();
 }
 
-export default withAuth(handler, 2);
+export default withAuth(handler, 1);
