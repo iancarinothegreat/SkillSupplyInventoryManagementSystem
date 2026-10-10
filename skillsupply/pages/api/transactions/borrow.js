@@ -15,12 +15,17 @@ async function handler(req, res) {
   try {
     const txn = await transaction(async (client) => {
       const stock = await client.query(
-        'SELECT quantity_on_hand, item_name FROM inventory_items WHERE item_id=$1 FOR UPDATE',
+        'SELECT quantity_on_hand, item_name, is_returnable FROM inventory_items WHERE item_id=$1 FOR UPDATE',
         [item_id]
       );
       if (!stock.rows[0]) {
         const error = new Error('Item not found');
         error.statusCode = 404;
+        throw error;
+      }
+      if (!stock.rows[0].is_returnable) {
+        const error = new Error('This item is not returnable and cannot be borrowed');
+        error.statusCode = 400;
         throw error;
       }
       if (stock.rows[0].quantity_on_hand < quantity) {

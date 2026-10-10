@@ -159,6 +159,7 @@ export default function BorrowPage() {
   const activeCount = transactions.filter((t) => isBorrowedStatus(t.status)).length;
   const overdueCount = transactions.filter((t) => t.status === 'Overdue').length;
   const returnedCount = transactions.filter((t) => t.status === 'Returned').length;
+  const borrowableItems = inventory.filter((i) => (i.quantity_on_hand ?? 0) > 0 && i.is_returnable);
 
   const filtered = transactions.filter((t) => {
     if (filterStatus === 'all') return true;
@@ -306,14 +307,15 @@ export default function BorrowPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select item...</option>
-                  {inventory
-                    .filter((i) => (i.quantity_on_hand ?? 0) > 0)
-                    .map((item) => (
-                      <option key={item.item_id} value={item.item_id}>
-                        {item.item_name} (Stock: {item.quantity_on_hand})
-                      </option>
-                    ))}
+                  {borrowableItems.map((item) => (
+                    <option key={item.item_id} value={item.item_id}>
+                      {item.item_name} (Stock: {item.quantity_on_hand})
+                    </option>
+                  ))}
                 </select>
+                {borrowableItems.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-500">No returnable items available for borrowing.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
