@@ -36,11 +36,14 @@ async function handler(req, res) {
       paramIdx++;
     }
 
+    const monthlyDivParams = division_id ? [division_id] : [];
+
     const [
       kpiResult,
       divisionConsumptionResult,
       divisionDetailsResult,
       monthlyTrendResult,
+      monthlyTrendByDivisionResult,
       topItemsResult,
       categoryResult,
       stockStatusResult,
@@ -112,6 +115,34 @@ async function handler(req, res) {
         LEFT JOIN returned r ON r.month = m.month
         ORDER BY m.month
       `),
+
+      // Monthly trend per division (last 6 months)
+      query(`
+        WITH months AS (
+          SELECT to_char(now() - (i || ' month')::interval, 'YYYY-MM') AS month_key,
+                 to_char(now() - (i || ' month')::interval, 'Mon YYYY') AS label,
+                 i AS sort_order
+          FROM generate_series(0, 5) i
+        ),
+        per_division AS (
+          SELECT division_id, division_name FROM divisions
+          ${division_id ? 'WHERE division_id = $1' : ''}
+        ),
+        agg AS (
+          SELECT bt.division_id,
+            to_char(bt.borrow_date, 'YYYY-MM') AS month_key,
+            SUM(bt.quantity_borrowed) AS issued
+          FROM borrow_transactions bt
+          WHERE bt.borrow_date >= now() - interval '6 months'
+            ${division_id ? 'AND bt.division_id = $1' : ''}
+          GROUP BY bt.division_id, to_char(bt.borrow_date, 'YYYY-MM')
+        )
+        SELECT m.label, pd.division_name, COALESCE(a.issued, 0) AS issued
+        FROM months m
+        CROSS JOIN per_division pd
+        LEFT JOIN agg a ON a.division_id = pd.division_id AND a.month_key = m.month_key
+        ORDER BY m.sort_order DESC, pd.division_name
+      `, monthlyDivParams),
 
       // Top consumed items
       query(`
@@ -189,6 +220,11 @@ async function handler(req, res) {
         month: r.label,
         issued: parseInt(r.issued, 10),
         returned: parseInt(r.returned, 10)
+      })),
+      monthlyTrendByDivision: monthlyTrendByDivisionResult.rows.map(r => ({
+        month: r.label,
+        division: r.division_name,
+        issued: parseInt(r.issued, 10)
       })),
       topItems: topItemsResult.rows.map(r => ({
         name: r.item_name,

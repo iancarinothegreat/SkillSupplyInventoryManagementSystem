@@ -67,6 +67,25 @@ function createDoughnutTooltipConfig() {
   };
 }
 
+function DoughnutPercentageLegend({ labels, data, colors }) {
+  const total = data.reduce((sum, v) => sum + Number(v || 0), 0);
+  return (
+    <div className="flex flex-col justify-center gap-3 min-w-[150px] flex-shrink-0">
+      {labels.map((label, i) => {
+        const value = Number(data[i] || 0);
+        const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+        return (
+          <div key={label} className="flex items-center gap-2 text-sm">
+            <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: colors[i] }} />
+            <span className="text-gray-600 truncate">{label}</span>
+            <span className="font-semibold text-gray-900 ml-auto">{pct}%</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -206,8 +225,28 @@ export default function DashboardPage() {
         });
       }
 
-      // Monthly trend
-      if (analytics.monthlyTrend && analytics.monthlyTrend.length > 0) {
+      // Monthly trend (one line per division)
+      if (analytics.monthlyTrendByDivision && analytics.monthlyTrendByDivision.length > 0) {
+        const rows = analytics.monthlyTrendByDivision;
+        const months = [...new Set(rows.map(r => r.month))];
+        const divNames = [...new Set(rows.map(r => r.division))];
+        const divColors = [COLORS.blue, COLORS.green, COLORS.yellow, COLORS.purple, COLORS.pink, COLORS.cyan, COLORS.orange, COLORS.indigo];
+
+        setMonthlyTrend({
+          labels: months,
+          datasets: divNames.map((name, idx) => ({
+            label: name,
+            data: months.map(m => {
+              const row = rows.find(r => r.month === m && r.division === name);
+              return row ? row.issued : 0;
+            }),
+            borderColor: divColors[idx % divColors.length],
+            backgroundColor: `${divColors[idx % divColors.length]}33`,
+            fill: false,
+            tension: 0.4
+          }))
+        });
+      } else if (analytics.monthlyTrend && analytics.monthlyTrend.length > 0) {
         setMonthlyTrend({
           labels: analytics.monthlyTrend.map(d => d.month),
           datasets: [
@@ -320,11 +359,11 @@ export default function DashboardPage() {
     categoryPercentage: 0.8
   };
 
-  const doughnutOptions = (position = 'bottom') => ({
+  const doughnutOptions = (position = 'bottom', showLegend = true) => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position, labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+      legend: { display: showLegend, position, labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
       tooltip: createDoughnutTooltipConfig()
     },
     cutout: '60%'
@@ -438,9 +477,18 @@ export default function DashboardPage() {
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
-            <div style={{ height: 280 }} className="flex items-center justify-center">
+            <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
               {stockStatusChart.labels.length > 0 ? (
-                <Doughnut data={stockStatusChart} options={doughnutOptions('bottom')} />
+                <>
+                  <div className="flex-1 h-full min-w-0">
+                    <Doughnut data={stockStatusChart} options={doughnutOptions('bottom', false)} />
+                  </div>
+                  <DoughnutPercentageLegend
+                    labels={stockStatusChart.labels}
+                    data={stockStatusChart.datasets[0].data}
+                    colors={stockStatusChart.datasets[0].backgroundColor}
+                  />
+                </>
               ) : (
                 <p className="text-sm text-gray-400">No data</p>
               )}
@@ -453,7 +501,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {/* Monthly Trend */}
         <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Monthly Consumption Trend (6 months)</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Monthly Consumption Trend by Division (6 months)</h2>
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
@@ -488,9 +536,18 @@ export default function DashboardPage() {
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
-            <div style={{ height: 280 }} className="flex items-center justify-center">
+            <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
               {categoryChart.labels.length > 0 ? (
-                <Doughnut data={categoryChart} options={doughnutOptions('right')} />
+                <>
+                  <div className="flex-1 h-full min-w-0">
+                    <Doughnut data={categoryChart} options={doughnutOptions('right', false)} />
+                  </div>
+                  <DoughnutPercentageLegend
+                    labels={categoryChart.labels}
+                    data={categoryChart.datasets[0].data}
+                    colors={categoryChart.datasets[0].backgroundColor}
+                  />
+                </>
               ) : (
                 <p className="text-sm text-gray-400">No data</p>
               )}
