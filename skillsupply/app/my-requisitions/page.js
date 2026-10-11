@@ -10,6 +10,7 @@ export default function MyRequisitionsPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingRequest, setEditingRequest] = useState(null);
+  const [deleteRequest, setDeleteRequest] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -114,7 +115,6 @@ export default function MyRequisitionsPage() {
   };
 
   const handleDelete = async (request) => {
-    if (!window.confirm(`Delete request #${request.id}?`)) return;
     setError('');
     try {
       const token = sessionStorage.getItem('token');
@@ -128,6 +128,7 @@ export default function MyRequisitionsPage() {
         return;
       }
       setSuccess('Request deleted successfully.');
+      setDeleteRequest(null);
       fetchMyRequisitions();
       broadcastRequisitionUpdate();
       setTimeout(() => setSuccess(''), 5000);
@@ -255,7 +256,7 @@ export default function MyRequisitionsPage() {
                       <button onClick={() => openEditModal(r)} className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 font-medium transition">
                         Edit
                       </button>
-                      <button onClick={() => handleDelete(r)} className="text-xs px-3 py-1.5 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 font-medium transition">
+                      <button onClick={() => { setDeleteRequest(r); setError(''); }} className="text-xs px-3 py-1.5 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 font-medium transition">
                         Delete
                       </button>
                     </div>
@@ -323,6 +324,38 @@ export default function MyRequisitionsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {deleteRequest && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold text-gray-900">Delete Request</h2>
+              <p className="text-xs text-gray-400 mt-0.5">This action cannot be undone</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Are you sure you want to delete request <span className="font-semibold text-gray-900">#{deleteRequest.id}</span> for <span className="font-semibold text-gray-900">{deleteRequest.item_name}</span>?
+              </p>
+              {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setDeleteRequest(null); setError(''); }}
+                  className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(deleteRequest)}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition"
+                >
+                  Delete Request
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
