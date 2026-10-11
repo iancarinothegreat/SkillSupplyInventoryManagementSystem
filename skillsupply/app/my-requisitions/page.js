@@ -2,12 +2,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonCard } from '../../components/Skeleton';
+import { broadcastRequisitionUpdate } from '../../lib/events';
 
 export default function MyRequisitionsPage() {
   const [requisitions, setRequisitions] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingRequest, setEditingRequest] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -75,8 +77,8 @@ export default function MyRequisitionsPage() {
     setError('');
     try {
       const token = sessionStorage.getItem('token');
-      const res = await fetch('/api/requests', {
-        method: 'POST',
+      const res = await fetch(editingRequest ? `/api/requests/${editingRequest.id}` : '/api/requests', {
+        method: editingRequest ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -85,19 +87,52 @@ export default function MyRequisitionsPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess('Request submitted successfully! Awaiting approval.');
+        setSuccess(editingRequest ? 'Request updated successfully.' : 'Request submitted successfully! Awaiting approval.');
         setShowModal(false);
+        setEditingRequest(null);
         setForm({ item_id: '', quantity: '', purpose: '' });
         fetchMyRequisitions();
+        broadcastRequisitionUpdate();
         setTimeout(() => setSuccess(''), 5000);
       } else {
-        setError(data.message || 'Failed to submit request.');
+        setError(data.error || data.message || 'Failed to submit request.');
         setTimeout(() => setError(''), 5000);
       }
     } catch (err) {
       setError('Server error.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openEditModal = (request) => {
+    setEditingRequest(request);
+    setForm({ item_id: String(request.item_id), quantity: String(request.quantity), purpose: request.purpose || '' });
+    setError('');
+    setSuccess('');
+    setShowModal(true);
+  };
+
+  const handleDelete = async (request) => {
+    if (!window.confirm(`Delete request #${request.id}?`)) return;
+    setError('');
+    try {
+      const token = sessionStorage.getItem('token');
+      const res = await fetch(`/api/requests/${request.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to delete request.');
+        return;
+      }
+      setSuccess('Request deleted successfully.');
+      fetchMyRequisitions();
+      broadcastRequisitionUpdate();
+      setTimeout(() => setSuccess(''), 5000);
+    } catch (err) {
+      setError('Server error.');
     }
   };
 
@@ -127,7 +162,13 @@ export default function MyRequisitionsPage() {
             <p className="text-sm text-gray-500 mt-1">Submit and track your supply requests</p>
           </div>
           <button
-            onClick={() => { setShowModal(true); setError(''); setSuccess(''); }}
+            onClick={() => {
+              setEditingRequest(null);
+              setForm({ item_id: '', quantity: '', purpose: '' });
+              setShowModal(true);
+              setError('');
+              setSuccess('');
+            }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
           >
             + New Request
@@ -210,6 +251,14 @@ export default function MyRequisitionsPage() {
                   <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2">
                     <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
                     <p className="text-xs text-yellow-600">Awaiting review by Supply Officer</p>
+                    <div className="ml-auto flex gap-2">
+                      <button onClick={() => openEditModal(r)} className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 font-medium transition">
+                        Edit
+                      </button>
+                      <button onClick={() => handleDelete(r)} className="text-xs px-3 py-1.5 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 font-medium transition">
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 )}
                 {r.status === 'Approved' && (
@@ -228,7 +277,7 @@ export default function MyRequisitionsPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             <div className="p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">New Supply Request</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{editingRequest ? 'Edit Supply Request' : 'New Supply Request'}</h2>
               <p className="text-xs text-gray-400 mt-0.5">Your request will be reviewed by the Supply Officer</p>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -268,9 +317,9 @@ export default function MyRequisitionsPage() {
                 />
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">Cancel</button>
+                <button type="button" onClick={() => { setShowModal(false); setEditingRequest(null); }} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">Cancel</button>
                 <button type="submit" disabled={submitting} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition">
-                  {submitting ? 'Submitting...' : 'Submit Request'}
+                  {submitting ? 'Saving...' : editingRequest ? 'Save Changes' : 'Submit Request'}
                 </button>
               </div>
             </form>

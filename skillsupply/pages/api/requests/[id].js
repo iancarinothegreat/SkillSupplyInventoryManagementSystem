@@ -6,6 +6,75 @@ async function handler(req, res) {
 
   if (req.method === 'PUT') {
     const { status, remarks } = req.body;
+
+    if (typeof status === 'undefined') {
+      if (req.user.hierarchy_level !== 1) {
+        return res.status(400).json({ error: 'Invalid request update' });
+      }
+
+      const { item_id, quantity, purpose } = req.body;
+      const parsedQuantity = Number(quantity);
+      if (!item_id || !Number.isInteger(parsedQuantity) || parsedQuantity < 1 || !purpose?.trim()) {
+        return res.status(400).json({ error: 'Item, quantity, and purpose are required' });
+      }
+
+      try {
+        const result = await transaction(async (client) => {
+          const existing = await client.query(`
+            SELECT r.status, ri.requisition_item_id
+            FROM requisitions r
+            JOIN requisition_items ri ON ri.requisition_id = r.requisition_id
+            WHERE r.requisition_id = $1 AND r.user_id = $2
+            FOR UPDATE OF r, ri
+          `, [id, req.user.user_id]);
+          const previous = existing.rows[0];
+          if (!previous) {
+            const error = new Error('Requisition not found');
+            error.statusCode = 404;
+            throw error;
+          }
+          if (previous.status !== 'Pending') {
+            const error = new Error('Only pending requisitions can be edited');
+            error.statusCode = 409;
+            throw error;
+          }
+
+          const item = await client.query(
+            'SELECT item_id FROM inventory_items WHERE item_id = $1 AND is_active = true',
+            [item_id]
+          );
+          if (!item.rows[0]) {
+            const error = new Error('Item not found');
+            error.statusCode = 400;
+            throw error;
+          }
+
+          const updated = await client.query(`
+            UPDATE requisition_items
+            SET item_id = $1, quantity_requested = $2, purpose = $3
+            WHERE requisition_item_id = $4
+            RETURNING requisition_id
+          `, [item_id, parsedQuantity, purpose.trim(), previous.requisition_item_id]);
+
+          await client.query(`
+            INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
+            VALUES ($1, 'UPDATE', 'requisitions', $2, $3, $4)
+          `, [
+            req.user.user_id,
+            id,
+            JSON.stringify({ status: previous.status }),
+            JSON.stringify({ item_id, quantity: parsedQuantity, purpose: purpose.trim() })
+          ]);
+          return updated.rows[0];
+        });
+
+        return res.status(200).json({ message: 'Requisition updated successfully', ...result });
+      } catch (err) {
+        console.error(err);
+        return res.status(err.statusCode || 500).json({ error: err.message || 'Server error' });
+      }
+    }
+
     if (!['Approved', 'Rejected'].includes(status))
       return res.status(400).json({ error: 'Invalid status' });
 
@@ -77,7 +146,51 @@ async function handler(req, res) {
     }
   }
 
+  if (req.method === 'DELETE') {
+    if (req.user.hierarchy_level !== 1) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    try {
+      const result = await transaction(async (client) => {
+        const existing = await client.query(`
+          SELECT r.status
+          FROM requisitions r
+          WHERE r.requisition_id = $1 AND r.user_id = $2
+          FOR UPDATE
+        `, [id, req.user.user_id]);
+        const previous = existing.rows[0];
+        if (!previous) {
+          const error = new Error('Requisition not found');
+          error.statusCode = 404;
+          throw error;
+        }
+        if (previous.status !== 'Pending') {
+          const error = new Error('Only pending requisitions can be deleted');
+          error.statusCode = 409;
+          throw error;
+        }
+
+        await client.query('DELETE FROM requisition_items WHERE requisition_id = $1', [id]);
+        const deleted = await client.query(
+          'DELETE FROM requisitions WHERE requisition_id = $1 RETURNING requisition_id',
+          [id]
+        );
+        await client.query(`
+          INSERT INTO audit_log (user_id, action, table_name, record_id, old_values)
+          VALUES ($1, 'DELETE', 'requisitions', $2, $3)
+        `, [req.user.user_id, id, JSON.stringify(previous)]);
+        return deleted.rows[0];
+      });
+
+      return res.status(200).json({ message: 'Requisition deleted successfully', ...result });
+    } catch (err) {
+      console.error(err);
+      return res.status(err.statusCode || 500).json({ error: err.message || 'Server error' });
+    }
+  }
+
   return res.status(405).end();
 }
 
-export default withAuth(handler, 2);
+export default withAuth(handler, 1);

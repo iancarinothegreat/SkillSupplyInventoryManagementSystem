@@ -26,6 +26,7 @@ async function handler(req, res) {
           u.full_name AS requester_name,
           u.username,
           d.division_name,
+          i.item_id,
           i.item_name,
           ri.quantity_requested AS quantity,
           ri.purpose,
