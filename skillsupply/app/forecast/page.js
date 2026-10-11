@@ -464,42 +464,6 @@ export default function ForecastPage() {
             </div>
           </div>
 
-          {criticalCount > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-red-700 mb-3">Critical Items — Immediate Attention Required</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {forecasts.filter(i => getRiskLevel(i) === 'critical').map(item => {
-                  const dailySma = Number(item?.sma) || 0;
-                  const stock = Number(item?.stock) || 0;
-                  return (
-                    <div key={item.item_id} className="bg-white border border-red-200 rounded-xl p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{item.item_name}</p>
-                          <p className="text-xs text-gray-400">{item.category_name}</p>
-                        </div>
-                        <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-medium">Critical</span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="bg-gray-50 rounded-lg p-2">
-                          <p className="text-lg font-bold text-gray-800">{stock}</p>
-                          <p className="text-xs text-gray-400">Stock</p>
-                        </div>
-                        <div className="bg-gray-50 rounded-lg p-2">
-                          <p className="text-lg font-bold text-blue-600">{Number(dailySma).toFixed(1)}</p>
-                          <p className="text-xs text-gray-400">SMA/day</p>
-                        </div>
-                        <div className="bg-red-50 rounded-lg p-2">
-                          <p className="text-lg font-bold text-red-600">{item?.days_left ?? 0}d</p>
-                          <p className="text-xs text-gray-400">Left</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
