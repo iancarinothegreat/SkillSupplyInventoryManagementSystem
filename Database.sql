@@ -51,7 +51,7 @@ CREATE TABLE inventory_items (
   serial_number VARCHAR(100),
   defective_quantity INT NOT NULL DEFAULT 0,
   is_returnable BOOLEAN DEFAULT FALSE,
-  unit_cost NUMERIC(10,2),
+  unit_cost NUMERIC,
   description TEXT,
   notes TEXT,
   is_active BOOLEAN DEFAULT TRUE,
@@ -185,4 +185,3 @@ CREATE INDEX idx_consumption_tracking_division_id ON consumption_tracking(divisi
 CREATE INDEX idx_consumption_tracking_date ON consumption_tracking(consumption_date DESC);
 CREATE INDEX idx_forecast_data_item_id ON forecast_data(item_id);
 CREATE INDEX idx_forecast_data_division_id ON forecast_data(division_id);
-
