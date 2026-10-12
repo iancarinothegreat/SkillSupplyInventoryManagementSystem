@@ -125,6 +125,8 @@ CREATE TABLE requisitions (
   approved_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   approval_date DATE,
   approval_remarks TEXT,
+  released_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+  release_date TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
 

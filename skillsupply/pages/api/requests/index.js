@@ -22,6 +22,8 @@ async function handler(req, res) {
           r.approved_by,
           r.approval_date,
           r.approval_remarks,
+          r.released_by,
+          r.release_date,
           r.created_at,
           u.full_name AS requester_name,
           u.username,

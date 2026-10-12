@@ -142,6 +142,7 @@ export default function MyRequisitionsPage() {
       Pending: 'bg-yellow-100 text-yellow-800',
       Approved: 'bg-green-100 text-green-800',
       Rejected: 'bg-red-100 text-red-800',
+      Released: 'bg-blue-100 text-blue-800',
     };
     return `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${map[status] || 'bg-gray-100 text-gray-800'}`;
   };
@@ -151,6 +152,7 @@ export default function MyRequisitionsPage() {
   const counts = {
     Pending: requisitions.filter(r => r.status === 'Pending').length,
     Approved: requisitions.filter(r => r.status === 'Approved').length,
+    Released: requisitions.filter(r => r.status === 'Released').length,
     Rejected: requisitions.filter(r => r.status === 'Rejected').length,
   };
 
@@ -184,12 +186,13 @@ export default function MyRequisitionsPage() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {loading ? (
             Array.from({ length: 3 }).map((_, i) => <SkeletonKpiCard key={i} />)
           ) : [
             { label: 'Pending', value: counts.Pending },
             { label: 'Approved', value: counts.Approved },
+            { label: 'Released', value: counts.Released },
             { label: 'Rejected', value: counts.Rejected },
           ].map(s => (
             <KpiCard key={s.label} label={s.label} value={s.value} />
@@ -198,7 +201,7 @@ export default function MyRequisitionsPage() {
 
         {/* Filter Tabs */}
         <div className="flex gap-2">
-          {['all', 'Pending', 'Approved', 'Rejected'].map((s) => (
+          {['all', 'Pending', 'Approved', 'Released', 'Rejected'].map((s) => (
             <button
               key={s}
               onClick={() => setFilterStatus(s)}
@@ -266,6 +269,12 @@ export default function MyRequisitionsPage() {
                   <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2">
                     <div className="w-2 h-2 bg-green-400 rounded-full" />
                     <p className="text-xs text-green-600">Request approved — coordinate with Supply Officer for release</p>
+                  </div>
+                )}
+                {r.status === 'Released' && (
+                  <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full" />
+                    <p className="text-xs text-blue-600">Item released — request completed</p>
                   </div>
                 )}
               </div>

@@ -75,7 +75,7 @@ async function handler(req, res) {
       }
     }
 
-    if (!['Approved', 'Rejected'].includes(status))
+    if (!['Approved', 'Rejected', 'Released'].includes(status))
       return res.status(400).json({ error: 'Invalid status' });
 
     try {
@@ -87,32 +87,37 @@ async function handler(req, res) {
           error.statusCode = 404;
           throw error;
         }
-        if (previous.status !== 'Pending') {
-          const error = new Error(`Requisition is already ${previous.status}`);
-          error.statusCode = 409;
-          throw error;
-        }
+        if (status === 'Released') {
+          if (req.user.hierarchy_level < 2) {
+            const error = new Error('Only supply officers and administrators can release items');
+            error.statusCode = 403;
+            throw error;
+          }
+          if (previous.status !== 'Approved') {
+            const error = new Error('Only approved requisitions can be released');
+            error.statusCode = 409;
+            throw error;
+          }
 
-        const items = await client.query(`
-          SELECT ri.requisition_item_id, ri.item_id,
-                 COALESCE(ri.quantity_approved, ri.quantity_requested) AS quantity_issued,
-                 i.quantity_on_hand
-          FROM requisition_items ri
-          JOIN inventory_items i ON i.item_id = ri.item_id
-          WHERE ri.requisition_id = $1
-          FOR UPDATE OF i
-        `, [id]);
-
-        if (status === 'Approved') {
-          const insufficient = items.rows.find((item) => item.quantity_on_hand < item.quantity_issued);
+          const items = await client.query(`
+            SELECT ri.requisition_item_id, ri.item_id,
+                   COALESCE(ri.quantity_approved, ri.quantity_requested) AS quantity_to_release,
+                   i.quantity_on_hand
+            FROM requisition_items ri
+            JOIN inventory_items i ON i.item_id = ri.item_id
+            WHERE ri.requisition_id = $1
+            FOR UPDATE OF i
+          `, [id]);
+          const insufficient = items.rows.find((item) => item.quantity_on_hand < item.quantity_to_release);
           if (insufficient) {
             const error = new Error('Insufficient stock for one or more requested items');
             error.statusCode = 400;
             throw error;
           }
+
           await client.query(`
             UPDATE requisition_items
-            SET quantity_issued = COALESCE(quantity_approved, quantity_requested), status = 'Approved'
+            SET quantity_issued = COALESCE(quantity_approved, quantity_requested), status = 'Released'
             WHERE requisition_id = $1
           `, [id]);
           await client.query(`
@@ -120,6 +125,31 @@ async function handler(req, res) {
             SET quantity_on_hand = i.quantity_on_hand - ri.quantity_issued
             FROM requisition_items ri
             WHERE ri.requisition_id = $1 AND ri.item_id = i.item_id
+          `, [id]);
+          const released = await client.query(`
+            UPDATE requisitions
+            SET status = 'Released', released_by = $1, release_date = NOW()
+            WHERE requisition_id = $2
+            RETURNING *
+          `, [req.user.user_id, id]);
+          await client.query(`
+            INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
+            VALUES ($1, 'RELEASE', 'requisitions', $2, $3, $4)
+          `, [req.user.user_id, id, JSON.stringify({ status: previous.status }), JSON.stringify(released.rows[0])]);
+          return released.rows[0];
+        }
+
+        if (previous.status !== 'Pending') {
+          const error = new Error(`Requisition is already ${previous.status}`);
+          error.statusCode = 409;
+          throw error;
+        }
+
+        if (status === 'Approved') {
+          await client.query(`
+            UPDATE requisition_items
+            SET quantity_approved = quantity_requested, status = 'Approved'
+            WHERE requisition_id = $1
           `, [id]);
         } else {
           await client.query(`UPDATE requisition_items SET status = 'Rejected' WHERE requisition_id = $1`, [id]);

@@ -74,7 +74,7 @@ export default function RequisitionsPage() {
         broadcastRequisitionUpdate();
         setTimeout(() => setSuccess(''), 5000);
       } else {
-        setError(data.message || 'Action failed.');
+        setError(data.error || data.message || 'Action failed.');
       }
     } catch (err) {
       setError('Server error.');
@@ -90,6 +90,7 @@ export default function RequisitionsPage() {
       Pending: 'bg-yellow-100 text-yellow-800',
       Approved: 'bg-green-100 text-green-800',
       Rejected: 'bg-red-100 text-red-800',
+      Released: 'bg-blue-100 text-blue-800',
     };
     return `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${map[status] || 'bg-gray-100 text-gray-800'}`;
   };
@@ -99,6 +100,7 @@ export default function RequisitionsPage() {
     Pending: requisitions.filter(r => r.status === 'Pending').length,
     Approved: requisitions.filter(r => r.status === 'Approved').length,
     Rejected: requisitions.filter(r => r.status === 'Rejected').length,
+    Released: requisitions.filter(r => r.status === 'Released').length,
   };
 
   return (
@@ -128,6 +130,7 @@ export default function RequisitionsPage() {
             { label: 'Total', value: counts.all },
             { label: 'Pending', value: counts.Pending },
             { label: 'Approved', value: counts.Approved },
+            { label: 'Released', value: counts.Released },
             { label: 'Rejected', value: counts.Rejected },
           ].map((s) => (
             <KpiCard key={s.label} label={`${s.label} Requests`} value={s.value} />
@@ -136,7 +139,7 @@ export default function RequisitionsPage() {
 
         {/* Filter Tabs */}
         <div className="flex gap-2">
-          {['all', 'Pending', 'Approved', 'Rejected'].map((s) => (
+          {['all', 'Pending', 'Approved', 'Released', 'Rejected'].map((s) => (
             <button
               key={s}
               onClick={() => setFilterStatus(s)}
@@ -199,8 +202,15 @@ export default function RequisitionsPage() {
                           >
                             Review
                           </button>
+                        ) : r.status === 'Approved' ? (
+                          <button
+                            onClick={() => setSelectedReq(r)}
+                            className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium transition"
+                          >
+                            Release
+                          </button>
                         ) : (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-gray-400">{r.status === 'Released' ? 'Released' : '—'}</span>
                         )}
                       </td>
                     </tr>
@@ -216,7 +226,9 @@ export default function RequisitionsPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             <div className="p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">Review Request #{selectedReq.id}</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {selectedReq.status === 'Approved' ? 'Release Request' : 'Review Request'} #{selectedReq.id}
+              </h2>
             </div>
             <div className="p-6 space-y-4">
               <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
@@ -226,7 +238,7 @@ export default function RequisitionsPage() {
                 <div className="flex justify-between"><span className="text-gray-500">Quantity</span><span>{selectedReq.quantity}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Purpose</span><span className="text-right max-w-xs">{selectedReq.purpose}</span></div>
               </div>
-              <div>
+              {selectedReq.status === 'Pending' && <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Remarks (optional)</label>
                 <textarea
                   rows={2}
@@ -235,7 +247,7 @@ export default function RequisitionsPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Add remarks..."
                 />
-              </div>
+              </div>}
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => { setSelectedReq(null); setRemarks(''); }}
@@ -243,20 +255,32 @@ export default function RequisitionsPage() {
                 >
                   Cancel
                 </button>
-                <button
-                  onClick={() => handleAction(selectedReq.id, 'Rejected')}
-                  disabled={processing === selectedReq.id}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition"
-                >
-                  Reject
-                </button>
-                <button
-                  onClick={() => handleAction(selectedReq.id, 'Approved')}
-                  disabled={processing === selectedReq.id}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition"
-                >
-                  Approve
-                </button>
+                {selectedReq.status === 'Pending' ? (
+                  <>
+                    <button
+                      onClick={() => handleAction(selectedReq.id, 'Rejected')}
+                      disabled={processing === selectedReq.id}
+                      className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleAction(selectedReq.id, 'Approved')}
+                      disabled={processing === selectedReq.id}
+                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition"
+                    >
+                      Approve
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => handleAction(selectedReq.id, 'Released')}
+                    disabled={processing === selectedReq.id}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
+                  >
+                    Release Item
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -1,0 +1,3 @@
+ALTER TABLE requisitions
+  ADD COLUMN IF NOT EXISTS released_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS release_date TIMESTAMP;
