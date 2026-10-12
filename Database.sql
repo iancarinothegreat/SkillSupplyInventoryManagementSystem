@@ -120,7 +120,8 @@ CREATE TABLE requisitions (
   requisition_id SERIAL PRIMARY KEY,
   user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
   division_id INT NOT NULL REFERENCES divisions(division_id),
-  status VARCHAR(20) DEFAULT 'Pending',
+  status VARCHAR(20) DEFAULT 'Pending'
+    CHECK (status IN ('Pending', 'Approved', 'Rejected', 'Issued', 'Returned', 'Released')),
   requested_date DATE NOT NULL DEFAULT CURRENT_DATE,
   approved_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   approval_date DATE,
@@ -139,6 +140,7 @@ CREATE TABLE requisition_items (
   quantity_issued INT NOT NULL DEFAULT 0,
   purpose TEXT,
   status VARCHAR(20) DEFAULT 'Pending'
+    CHECK (status IN ('Pending', 'Approved', 'Rejected', 'Issued', 'Returned', 'Released'))
 );
 
 CREATE TABLE consumption_tracking (
