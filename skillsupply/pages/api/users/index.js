@@ -3,6 +3,7 @@ import { withAuth } from '../../../lib/rbac.js';
 import bcrypt from 'bcryptjs';
 
 const FULL_NAME_PATTERN = /^[A-Za-zÀ-ÖØ-öø-ÿñÑ '.\\-]+$/;
+const PASSWORD_PATTERN = /^(?=.{8,}$)(?=.*[A-Z])(?=.*[^A-Za-z0-9]).*$/;
 
 function normalizeFullName(value) {
   return String(value ?? '')
@@ -55,6 +56,10 @@ async function handler(req, res) {
     const { username, password, full_name, email, contact, role_id, division_id } = req.body;
     if (!username || !password || !full_name || !role_id)
       return res.status(400).json({ error: 'Missing required fields' });
+
+    if (!PASSWORD_PATTERN.test(password)) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters and include at least 1 uppercase letter and 1 special character.' });
+    }
 
     if (contact && contact.length > 11)
       return res.status(400).json({ error: 'Contact number must be at most 11 characters.' });
@@ -124,6 +129,9 @@ async function handler(req, res) {
 
       let password_hash = current.password_hash;
       if (password && password.trim() !== '') {
+        if (!PASSWORD_PATTERN.test(password)) {
+          return res.status(400).json({ error: 'Password must be at least 8 characters and include at least 1 uppercase letter and 1 special character.' });
+        }
         password_hash = await bcrypt.hash(password, 12);
       }
 

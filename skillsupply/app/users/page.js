@@ -12,6 +12,11 @@ const ROLES = [
 
 const roleMap = { 1: 'Division Staff', 2: 'Supply Officer', 3: 'Administrator' };
 const FULL_NAME_CHARACTERS_PATTERN = /^[A-Za-zÀ-ÖØ-öø-ÿñÑ '.\\-]*$/;
+const PASSWORD_REQUIREMENTS = [
+  { label: 'At least 8 characters', test: (password) => password.length >= 8 },
+  { label: 'At least 1 uppercase letter', test: (password) => /[A-Z]/.test(password) },
+  { label: 'At least 1 special character', test: (password) => /[^A-Za-z0-9]/.test(password) },
+];
 const ADMIN_DIVISION_NAME = 'administrative';
 
 function isAdministrativeDivision(division) {
@@ -159,6 +164,10 @@ export default function UsersPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if ((!editingUser || form.password) && PASSWORD_REQUIREMENTS.some(({ test }) => !test(form.password))) {
+      setError('Password must have at least 8 characters, 1 uppercase letter, and 1 special character.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -454,6 +463,17 @@ export default function UsersPage() {
                         </svg>
                       )}
                     </button>
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {PASSWORD_REQUIREMENTS.map(({ label, test }) => {
+                      const valid = test(form.password);
+                      return (
+                        <p key={label} className={`text-xs ${valid ? 'text-green-600' : 'text-gray-400'}`}>
+                          <span className="inline-block w-4 font-semibold">{valid ? '✓' : '○'}</span>
+                          {label}
+                        </p>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
