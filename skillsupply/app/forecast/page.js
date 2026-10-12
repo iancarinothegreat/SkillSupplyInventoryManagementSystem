@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow, SkeletonChart } from '../../components/Skeleton';
 import { Line, Doughnut } from 'react-chartjs-2';
@@ -43,8 +42,6 @@ export default function ForecastPage() {
   const [forecasts, setForecasts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [filterRisk, setFilterRisk] = useState('all');
   const [smaWindow, setSmaWindow] = useState(3);
 
   // New state for charts
@@ -142,17 +139,10 @@ export default function ForecastPage() {
     }
   }, [dateFrom, dateTo, smaWindow]);
 
-  const searchParams = useSearchParams();
-
   useEffect(() => {
     fetchForecasts();
     fetchAnalytics();
   }, [fetchForecasts, fetchAnalytics]);
-
-  useEffect(() => {
-    const querySearch = searchParams?.get('search') || '';
-    setSearch(querySearch);
-  }, [searchParams]);
 
   const getRiskLevel = (item) => {
     const stock = Number(item.stock) || 0;
@@ -163,19 +153,6 @@ export default function ForecastPage() {
     if (item.severity === 'warning') return 'warning';
     return 'safe';
   };
-
-  const localRiskConfig = {
-    critical: { label: 'Critical', bg: 'bg-red-100', text: 'text-red-700', bar: 'bg-red-500', border: 'border-red-200' },
-    warning: { label: 'Warning', bg: 'bg-yellow-100', text: 'text-yellow-700', bar: 'bg-yellow-500', border: 'border-yellow-200' },
-    safe: { label: 'Safe', bg: 'bg-green-100', text: 'text-green-700', bar: 'bg-green-500', border: 'border-green-200' },
-  };
-
-  const filtered = forecasts.filter(item => {
-    const matchSearch = item.item_name?.toLowerCase().includes(search.toLowerCase());
-    const risk = getRiskLevel(item);
-    const matchRisk = filterRisk === 'all' || risk === filterRisk;
-    return matchSearch && matchRisk;
-  });
 
   const criticalCount = forecasts.filter(i => getRiskLevel(i) === 'critical').length;
   const warningCount = forecasts.filter(i => getRiskLevel(i) === 'warning').length;
@@ -224,39 +201,14 @@ export default function ForecastPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Forecasting & Analytics</h1>
-          <p className="text-sm text-gray-500 mt-1">Demand outlook and projections using <span className="font-medium text-blue-600">Simple Moving Average (SMA)</span></p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Forecasting & Analytics</h1>
+        <p className="text-sm text-gray-500 mt-1">Demand outlook and projections using <span className="font-medium text-blue-600">Simple Moving Average (SMA)</span></p>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
       )}
-
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search items..."
-          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <div className="flex gap-2">
-          {['all', 'critical', 'warning', 'safe'].map((r) => (
-            <button
-              key={r}
-              onClick={() => setFilterRisk(r)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition ${filterRisk === r ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Date Range Filter */}
       <div className="bg-white rounded-xl shadow-sm p-4">
@@ -380,86 +332,6 @@ export default function ForecastPage() {
         </div>
       </div>
 
-      {/* Forecast Table */}
-      {loading ? (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead className="bg-gray-50">
-              <tr>
-                {['Item', 'Category', 'Stock', 'Monthly Avg', 'Depletion', 'Progress', 'Alert'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: 6 }).map((_, i) => (
-                <SkeletonTableRow key={i} widths={['w-28', 'w-20', 'w-12', 'w-16', 'w-16', 'w-28', 'w-16']} className="border-b border-gray-50" />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="p-8 text-center text-gray-400">No items match your filter.</div>
-      ) : (
-        <>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead className="bg-gray-50">
-                  <tr>
-                    {['Item', 'Category', 'Stock', 'Monthly Avg', 'Depletion', 'Progress', 'Alert'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filtered.map((item) => {
-                    const risk = getRiskLevel(item);
-                    const cfg = localRiskConfig[risk];
-                    const stock = Number(item?.stock) || 0;
-                    const dailySma = Number(item?.sma) || 0;
-                    const monthlyAvg = dailySma > 0 ? dailySma * 30 : 0;
-                    const daysLeft = item?.days_left ?? null;
-                    const maxDays = 90;
-                    const noConsumption = dailySma === 0;
-                    const barPct = noConsumption ? 100 : (daysLeft !== null ? Math.min(100, Math.round((daysLeft / maxDays) * 100)) : 0);
-
-                    return (
-                      <tr key={item.item_id} className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.item_name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{item.category_name || '—'}</td>
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{stock} {item.unit_of_measure}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{monthlyAvg ? Number(monthlyAvg).toFixed(1) : '0.0'}</td>
-                        <td className="px-4 py-3 text-sm font-semibold">
-                          {noConsumption ? (
-                            <span className="text-green-600">No consumption</span>
-                          ) : daysLeft !== null ? (
-                            <span className={cfg.text}>{daysLeft}d</span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 w-40">
-                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${noConsumption ? 'bg-green-500' : cfg.bar}`} style={{ width: `${barPct}%` }} />
-                          </div>
-                          <p className="text-xs text-gray-400 mt-0.5">{barPct}% of 90d</p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>
-                            {cfg.label === 'Safe' ? 'Normal' : cfg.label}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-        </>
-      )}
     </div>
   );
 }
