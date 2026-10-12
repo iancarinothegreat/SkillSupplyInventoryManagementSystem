@@ -186,6 +186,13 @@ export default function Layout({ children }) {
   useEffect(() => {
     async function fetchInventoryAndNotifications() {
       if (!user) return;
+      if (Number(user.hierarchy_level) < 2) {
+        setAllInventory([]);
+        setLowStockItems([]);
+        setOverdueReturns([]);
+        setNotificationCount(0);
+        return;
+      }
 
       try {
         const token = sessionStorage.getItem('token');
@@ -317,6 +324,7 @@ export default function Layout({ children }) {
   );
 
   const isAdmin = user.hierarchy_level >= 2;
+  const canViewHeaderTools = Number(user.hierarchy_level) >= 2;
   const nav = isAdmin ? adminNav : staffNav;
   const extra = user.hierarchy_level === 3 ? adminOnly : [];
   const allNav = [...nav, ...extra];
@@ -457,65 +465,66 @@ export default function Layout({ children }) {
           <h1 className="text-sm font-semibold text-gray-800">
             {allNav.find(n => n.href === pathname)?.label || 'SkillSupply'}
           </h1>
-          <div className="flex items-center gap-3">
-            {/* Search Dropdown */}
-            <div className="relative" ref={searchDropdownRef}>
-              <input
-                ref={searchInputRef}
-                value={searchQuery}
-                onChange={(e) => handleTopSearchChange(e.target.value)}
-                onFocus={() => searchQuery.trim() && setShowSearchDropdown(true)}
-                placeholder="Search items..."
-                className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-44 focus:outline-none focus:border-gray-300"
-              />
-              {showSearchDropdown && searchResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
-                  {searchResults.map((item) => (
-                    <div
-                      key={item.id ?? item.item_id}
-                      onClick={() => {
-                        setShowSearchDropdown(false);
-                        // Could navigate to item detail here
-                      }}
-                      className="px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                    >
-                      <div className="text-xs font-medium text-gray-900">{item.item_name ?? item.name}</div>
-                      <div className="text-xs text-gray-500">{(item.category_name ?? item.category) || 'Uncategorized'} · {item.unit || 'unit'}</div>
-                      <div className="flex justify-between items-center mt-1">
-                        <span className="text-xs text-gray-600">Qty: {item.quantity_on_hand ?? item.quantity ?? 0}</span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${
-                          (item.quantity_on_hand ?? item.quantity ?? 0) <= (item.reorder_level ?? item.reorder_point ?? 10)
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-green-100 text-green-700'
-                        }`}>
-                          {(item.quantity_on_hand ?? item.quantity ?? 0) <= (item.reorder_level ?? item.reorder_point ?? 10) ? 'LOW' : 'SUFFICIENT'}
-                        </span>
+          {canViewHeaderTools && (
+            <div className="flex items-center gap-3">
+              {/* Search Dropdown */}
+              <div className="relative" ref={searchDropdownRef}>
+                <input
+                  ref={searchInputRef}
+                  value={searchQuery}
+                  onChange={(e) => handleTopSearchChange(e.target.value)}
+                  onFocus={() => searchQuery.trim() && setShowSearchDropdown(true)}
+                  placeholder="Search items..."
+                  className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-44 focus:outline-none focus:border-gray-300"
+                />
+                {showSearchDropdown && searchResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+                    {searchResults.map((item) => (
+                      <div
+                        key={item.id ?? item.item_id}
+                        onClick={() => {
+                          setShowSearchDropdown(false);
+                          // Could navigate to item detail here
+                        }}
+                        className="px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="text-xs font-medium text-gray-900">{item.item_name ?? item.name}</div>
+                        <div className="text-xs text-gray-500">{(item.category_name ?? item.category) || 'Uncategorized'} · {item.unit || 'unit'}</div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-xs text-gray-600">Qty: {item.quantity_on_hand ?? item.quantity ?? 0}</span>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                            (item.quantity_on_hand ?? item.quantity ?? 0) <= (item.reorder_level ?? item.reorder_point ?? 10)
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {(item.quantity_on_hand ?? item.quantity ?? 0) <= (item.reorder_level ?? item.reorder_point ?? 10) ? 'LOW' : 'SUFFICIENT'}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Notification Bell with Dropdown */}
-            <div className="relative" ref={notificationRef}>
-              <button
-                onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
-                type="button"
-                className="relative w-8 h-8 border border-gray-200 rounded-lg flex items-center justify-center cursor-pointer hover:bg-gray-50"
-                aria-label="Notifications"
-              >
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-                </svg>
-                {notificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-medium leading-none text-white bg-red-600 rounded-full border border-white">
-                    {notificationCount > 99 ? '99+' : notificationCount}
-                  </span>
+                    ))}
+                  </div>
                 )}
-              </button>
+              </div>
 
-              {showNotificationDropdown && (
+              {/* Notification Bell with Dropdown */}
+              <div className="relative" ref={notificationRef}>
+                <button
+                  onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+                  type="button"
+                  className="relative w-8 h-8 border border-gray-200 rounded-lg flex items-center justify-center cursor-pointer hover:bg-gray-50"
+                  aria-label="Notifications"
+                >
+                  <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                  </svg>
+                  {notificationCount > 0 && (
+                    <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-medium leading-none text-white bg-red-600 rounded-full border border-white">
+                      {notificationCount > 99 ? '99+' : notificationCount}
+                    </span>
+                  )}
+                </button>
+
+                {showNotificationDropdown && (
                 <div className="absolute top-full right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
                   <div className="p-4 border-b border-gray-100 sticky top-0 bg-white">
                     <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
@@ -567,9 +576,10 @@ export default function Layout({ children }) {
                     </div>
                   )}
                 </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </header>
         <main className="flex-1 overflow-y-auto p-6">
           {children}
