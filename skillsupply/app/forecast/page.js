@@ -230,13 +230,6 @@ export default function ForecastPage() {
           <h1 className="text-2xl font-bold text-gray-900">Forecasting & Analytics</h1>
           <p className="text-sm text-gray-500 mt-1">Demand outlook and projections using <span className="font-medium text-blue-600">Simple Moving Average (SMA)</span></p>
         </div>
-        <div className="flex items-center gap-3">
-          {[3, 6, 12].map(n => (
-            <button key={n} onClick={() => { setSmaWindow(n); setLoading(true); }} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${smaWindow === n ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-              {n} months
-            </button>
-          ))}
-        </div>
       </div>
 
       {error && (
@@ -267,11 +260,20 @@ export default function ForecastPage() {
 
       {/* Date Range Filter */}
       <div className="bg-white rounded-xl shadow-sm p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          <span className="text-sm font-semibold text-gray-700">Date Range</span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-sm font-semibold text-gray-700">Date Range</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {[3, 6, 12].map(n => (
+              <button key={n} onClick={() => { setSmaWindow(n); setLoading(true); }} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${smaWindow === n ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+                {n} months
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <div>
@@ -376,14 +378,6 @@ export default function ForecastPage() {
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* SMA Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <h3 className="text-sm font-semibold text-blue-800 mb-1">About Simple Moving Average (SMA)</h3>
-        <p className="text-xs text-blue-700 leading-relaxed">
-          SMA estimates consumption using the last <strong>{smaWindow} months</strong> of transaction history. Use the window selector to change the period.
-        </p>
       </div>
 
       {/* Forecast Table */}
