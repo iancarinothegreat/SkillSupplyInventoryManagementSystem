@@ -266,12 +266,6 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            <Link
-              href="/signup"
-              className="w-full py-3 bg-white text-[#1a3a5c] border-2 border-[#1a3a5c] rounded-xl text-sm font-semibold hover:bg-blue-50 transition mt-2 text-center block"
-            >
-              Create New Account
-            </Link>
           </form>
 
         </div>
