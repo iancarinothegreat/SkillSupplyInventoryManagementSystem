@@ -1,7 +1,6 @@
 import { withAuth } from '../../../lib/rbac';
 import db from '../../../lib/db';
 import PDFDocument from 'pdfkit';
-import { computeSMA } from '../../../lib/sma';
 
 const REPORTS = {
   dashboard: {
@@ -161,38 +160,74 @@ async function handler(req, res) {
     if (report === 'forecast' || report === 'forecast_risk') {
       const windowMonths = 3;
       const items = await db.query(
-        `SELECT i.item_id, i.item_name, i.unit_of_measure, i.reorder_level,
-            c.category_name, i.division_id
+        `WITH monthly_consumption AS (
+           SELECT bt.item_id,
+                  DATE_TRUNC('month', bt.created_at) AS month,
+                  SUM(bt.quantity_borrowed)::numeric AS consumed
+           FROM borrow_transactions bt
+           WHERE bt.created_at >= NOW() - ($1::int * INTERVAL '1 month')
+           GROUP BY bt.item_id, DATE_TRUNC('month', bt.created_at)
+
+           UNION ALL
+
+           SELECT ri.item_id,
+                  DATE_TRUNC('month', r.requested_date) AS month,
+                  SUM(COALESCE(NULLIF(ri.quantity_issued, 0), ri.quantity_approved, ri.quantity_requested))::numeric AS consumed
+           FROM requisition_items ri
+           JOIN requisitions r ON r.requisition_id = ri.requisition_id
+           WHERE r.status = 'Approved'
+             AND r.requested_date >= NOW() - ($1::int * INTERVAL '1 month')
+           GROUP BY ri.item_id, DATE_TRUNC('month', r.requested_date)
+         ),
+         monthly_totals AS (
+           SELECT item_id, month, SUM(consumed) AS consumed
+           FROM monthly_consumption
+           GROUP BY item_id, month
+         ),
+         item_smas AS (
+           SELECT item_id, AVG(consumed) AS sma
+           FROM monthly_totals
+           GROUP BY item_id
+         )
+         SELECT i.item_id,
+                i.item_name,
+                i.unit_of_measure,
+                i.reorder_level,
+                COALESCE(i.quantity_on_hand, 0) AS stock,
+                c.category_name,
+                i.division_id,
+                COALESCE(s.sma, 0) AS sma
          FROM inventory_items i
          LEFT JOIN categories c ON c.category_id = i.category_id
-         WHERE i.is_active=true`
+         LEFT JOIN item_smas s ON s.item_id = i.item_id
+         WHERE i.is_active = true`,
+        [windowMonths]
       );
 
-      const forecasts = await Promise.all(
-        items.rows.map(async item => {
-          const sma = await computeSMA(item.item_id, windowMonths);
-          return {
-            item_id: item.item_id,
-            item_name: item.item_name,
-            category_name: item.category_name,
-            division_id: item.division_id,
-            unit_of_measure: item.unit_of_measure,
-            reorder_level: item.reorder_level,
-            ...sma,
-          };
-        })
-      );
+      const forecasts = items.rows.map(item => {
+        const stock = Number(item.stock) || 0;
+        const sma = Math.round((Number(item.sma) || 0) * 10) / 10;
+        const daysLeft = sma > 0 ? Math.round((stock / sma) * 30) : null;
+        return {
+          item_name: item.item_name,
+          division_id: item.division_id,
+          reorder_level: item.reorder_level,
+          sma,
+          stock,
+          daysLeft,
+          severity: daysLeft === null ? 'ok' : daysLeft <= 7 ? 'critical' : daysLeft <= 30 ? 'warning' : 'ok',
+        };
+      });
 
       const divisionMap = {};
       const divResult = await db.query('SELECT division_id, division_name FROM divisions');
       divResult.rows.forEach(d => { divisionMap[d.division_id] = d.division_name; });
 
       const rows = forecasts.map(f => {
-        const stock = Number(f.stock) || 0;
         const reorder = Number(f.reorder_level) || 0;
         let riskLevel = 'Safe';
-        if (reorder > 0 && stock <= reorder) riskLevel = 'Critical';
-        else if (reorder > 0 && stock <= reorder * 1.5) riskLevel = 'Warning';
+        if (reorder > 0 && f.stock <= reorder) riskLevel = 'Critical';
+        else if (reorder > 0 && f.stock <= reorder * 1.5) riskLevel = 'Warning';
         else if (f.severity === 'critical') riskLevel = 'Critical';
         else if (f.severity === 'warning') riskLevel = 'Warning';
 
@@ -201,7 +236,7 @@ async function handler(req, res) {
           Division: divisionMap[f.division_id] || '—',
           'Forecast Date': new Date().toISOString().slice(0, 10),
           'Average Demand': Number(f.sma).toFixed(1),
-          'Days to Depletion': f.daysLeft === 999 ? 'N/A' : f.daysLeft,
+          'Days to Depletion': f.daysLeft === null ? 'N/A' : f.daysLeft,
           'Risk Level': riskLevel,
         };
       });
