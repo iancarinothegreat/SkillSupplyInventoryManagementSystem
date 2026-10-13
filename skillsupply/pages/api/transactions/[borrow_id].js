@@ -86,15 +86,15 @@ async function handler(req, res) {
       );
       const consumption = await client.query(
         `UPDATE consumption_tracking
-         SET quantity_consumed = quantity_consumed + $3
-         WHERE item_id = $1 AND division_id = $2 AND consumption_date = CURRENT_DATE`,
+         SET quantity_consumed = quantity_consumed + $3::int
+         WHERE item_id = $1::int AND division_id = $2::int AND consumption_date = CURRENT_DATE`,
         [current.item_id, current.division_id, current.quantity_borrowed]
       );
       if (consumption.rowCount === 0) {
         await client.query(
           `INSERT INTO consumption_tracking
             (item_id, division_id, quantity_consumed, consumption_date)
-           VALUES ($1, $2, $3, CURRENT_DATE)`,
+           VALUES ($1::int, $2::int, $3::int, CURRENT_DATE)`,
           [current.item_id, current.division_id, current.quantity_borrowed]
         );
       }
