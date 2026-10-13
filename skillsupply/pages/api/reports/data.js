@@ -231,15 +231,33 @@ async function handler(req, res) {
         else if (f.severity === 'critical') riskLevel = 'Critical';
         else if (f.severity === 'warning') riskLevel = 'Warning';
 
+        if (report === 'forecast_risk' && riskLevel === 'Safe') return null;
+
+        if (report === 'forecast_risk') {
+          return {
+            Item: f.item_name,
+            Division: divisionMap[f.division_id] || '—',
+            'Current Stock': f.stock,
+            'Reorder Level': reorder,
+            'Average Demand': Number(f.sma).toFixed(1),
+            'Days to Depletion': f.daysLeft === null ? 'N/A' : f.daysLeft,
+            'Risk Level': riskLevel,
+            'Recommended Action': riskLevel === 'Critical' ? 'Reorder now' : 'Monitor and plan reorder',
+          };
+        }
+
+        const forecastedDemand = Math.round(f.sma * 3 * 10) / 10;
         return {
           Item: f.item_name,
           Division: divisionMap[f.division_id] || '—',
-          'Forecast Date': new Date().toISOString().slice(0, 10),
-          'Average Demand': Number(f.sma).toFixed(1),
+          'Current Stock': f.stock,
+          'Average Monthly Demand': Number(f.sma).toFixed(1),
+          'Forecasted Demand (3 Months)': forecastedDemand.toFixed(1),
+          'Estimated Stock After 3 Months': (f.stock - forecastedDemand).toFixed(1),
           'Days to Depletion': f.daysLeft === null ? 'N/A' : f.daysLeft,
-          'Risk Level': riskLevel,
+          'Forecast Date': new Date().toISOString().slice(0, 10),
         };
-      });
+      }).filter(Boolean);
 
       if (report === 'forecast_risk') {
         rows.sort((a, b) => {
