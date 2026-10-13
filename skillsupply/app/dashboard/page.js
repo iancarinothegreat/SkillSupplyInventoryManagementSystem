@@ -111,7 +111,6 @@ export default function DashboardPage() {
   const [divisionConsumption, setDivisionConsumption] = useState({ labels: [], datasets: [] });
   const [divisionDetails, setDivisionDetails] = useState([]);
   const [monthlyTrend, setMonthlyTrend] = useState({ labels: [], datasets: [] });
-  const [topItems, setTopItems] = useState({ labels: [], datasets: [] });
   const [categoryChart, setCategoryChart] = useState({ labels: [], datasets: [] });
   const [stockStatusChart, setStockStatusChart] = useState({ labels: [], datasets: [] });
   const [requisitionChart, setRequisitionChart] = useState({ labels: [], datasets: [] });
@@ -267,19 +266,6 @@ export default function DashboardPage() {
               tension: 0.4
             }
           ]
-        });
-      }
-
-      // Top items
-      if (analytics.topItems && analytics.topItems.length > 0) {
-        setTopItems({
-          labels: analytics.topItems.map(d => d.name.length > 15 ? d.name.substring(0, 15) + '...' : d.name),
-          datasets: [{
-            label: 'Times Borrowed',
-            data: analytics.topItems.map(d => d.borrowed),
-            backgroundColor: PIE_COLORS.slice(0, analytics.topItems.length),
-            borderRadius: 4
-          }]
         });
       }
 
@@ -498,7 +484,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         {/* Monthly Trend */}
         <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Monthly Consumption Trend by Division (6 months)</h2>
@@ -507,22 +493,6 @@ export default function DashboardPage() {
           ) : (
             <div style={{ height: 280 }}>
               <Line data={monthlyTrend} options={chartOptions} />
-            </div>
-          )}
-        </div>
-
-        {/* Top Items */}
-        <div className="bg-white rounded-xl shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Top Consumed Items</h2>
-          {!hasLoaded ? (
-            <SkeletonChart className="border-0 p-0 shadow-none" />
-          ) : (
-            <div style={{ height: 280 }}>
-              <Bar data={topItems} options={{
-                ...chartOptions,
-                indexAxis: 'y',
-                scales: { x: { beginAtZero: true } }
-              }} />
             </div>
           )}
         </div>

@@ -40,11 +40,16 @@ async function handler(req, res) {
           }
 
           const item = await client.query(
-            'SELECT item_id FROM inventory_items WHERE item_id = $1 AND is_active = true',
+            'SELECT item_id, item_name, quantity_on_hand FROM inventory_items WHERE item_id = $1 AND is_active = true FOR UPDATE',
             [item_id]
           );
           if (!item.rows[0]) {
             const error = new Error('Item not found');
+            error.statusCode = 400;
+            throw error;
+          }
+          if (parsedQuantity > item.rows[0].quantity_on_hand) {
+            const error = new Error(`Insufficient stock for ${item.rows[0].item_name}: requested ${parsedQuantity}, available ${item.rows[0].quantity_on_hand}.`);
             error.statusCode = 400;
             throw error;
           }
@@ -146,6 +151,20 @@ async function handler(req, res) {
         }
 
         if (status === 'Approved') {
+          const items = await client.query(`
+            SELECT i.item_name, ri.quantity_requested, i.quantity_on_hand
+            FROM requisition_items ri
+            JOIN inventory_items i ON i.item_id = ri.item_id
+            WHERE ri.requisition_id = $1
+            FOR UPDATE OF i
+          `, [id]);
+          const insufficient = items.rows.find((item) => item.quantity_on_hand < item.quantity_requested);
+          if (insufficient) {
+            const error = new Error(`Insufficient stock for ${insufficient.item_name}: requested ${insufficient.quantity_requested}, available ${insufficient.quantity_on_hand}.`);
+            error.statusCode = 400;
+            throw error;
+          }
+
           await client.query(`
             UPDATE requisition_items
             SET quantity_approved = quantity_requested, status = 'Approved'
