@@ -741,7 +741,6 @@ export default function InventoryPage() {
                   ['Item Name', viewItem.item_name],
                   ['Serial Number', viewItem.serial_number || '—'],
                   ['Category', viewItem.category_name],
-                  ['Division', viewItem.division_name || '—'],
                   ['Unit', viewItem.unit],
                   ['Quantity', `${viewItem.quantity} ${viewItem.unit}`],
                   ['Total Quantity', `${viewItem.total_quantity ?? ((viewItem.quantity ?? 0) + (parseInt(viewItem.defective_qty ?? viewItem.defectiveQty ?? 0) || 0))} ${viewItem.unit}`],
