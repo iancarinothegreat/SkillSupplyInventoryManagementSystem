@@ -118,9 +118,10 @@ async function handler(req, res) {
 
     await client.query(
       `UPDATE borrow_transactions
-       SET status=$1, actual_return_date=CASE WHEN $1='Returned' THEN NOW() ELSE actual_return_date END
-       WHERE borrow_id=$2`,
-      [status, id]
+       SET status=$1::varchar,
+           actual_return_date=CASE WHEN $2::varchar='Returned' THEN CURRENT_DATE ELSE actual_return_date END
+       WHERE borrow_id=$3::int`,
+      [status, status, id]
     );
 
     const updated = await client.query('SELECT * FROM borrow_transactions WHERE borrow_id=$1', [id]);
