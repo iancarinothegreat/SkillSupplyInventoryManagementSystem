@@ -9,6 +9,7 @@ const isBorrowedStatus = (status) => ['Borrowed', 'Issued', 'Active'].includes(s
 
 const statusBadge = (status) => {
   const map = {
+    Pending: 'bg-yellow-100 text-yellow-700',
     Borrowed: 'bg-blue-100 text-blue-700',
     Issued: 'bg-blue-100 text-blue-700',
     Active: 'bg-blue-100 text-blue-700',
@@ -161,7 +162,7 @@ export default function BorrowPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess('Item borrowed successfully. It will appear in Transactions for processing.');
+        setSuccess('Borrow request submitted for review. Inventory will be deducted after approval.');
         setShowModal(false);
         setForm(emptyForm);
         fetchMe();
@@ -178,6 +179,7 @@ export default function BorrowPage() {
   };
 
   const activeCount = transactions.filter((t) => isBorrowedStatus(t.status)).length;
+  const pendingCount = transactions.filter((t) => t.status === 'Pending').length;
   const overdueCount = transactions.filter((t) => t.status === 'Overdue').length;
   const returnedCount = transactions.filter((t) => t.status === 'Returned').length;
   const borrowableItems = inventory.filter((i) => (i.quantity_on_hand ?? 0) > 0 && i.is_returnable);
@@ -212,10 +214,11 @@ export default function BorrowPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => <SkeletonKpiCard key={i} />)
         ) : [
+          { label: 'Pending Review', value: pendingCount },
           { label: 'Borrowed', value: activeCount },
           { label: 'Overdue', value: overdueCount },
           { label: 'Returned', value: returnedCount },
@@ -226,7 +229,7 @@ export default function BorrowPage() {
 
       {/* Filter Tabs */}
       <div className="flex gap-2">
-        {['all', 'Borrowed', 'Returned', 'Overdue'].map((s) => (
+        {['all', 'Pending', 'Borrowed', 'Returned', 'Overdue'].map((s) => (
           <button
             key={s}
             onClick={() => setFilterStatus(s)}

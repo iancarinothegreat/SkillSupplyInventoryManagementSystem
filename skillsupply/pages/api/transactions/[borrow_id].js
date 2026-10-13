@@ -39,9 +39,58 @@ async function handler(req, res) {
       return res.status(400).json({ error: 'Cannot modify a cancelled transaction' });
     }
 
+    if (status === 'Overdue') {
+      if (!['Borrowed', 'Active', 'Issued'].includes(current.status)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Only an approved borrowed transaction can become Overdue' });
+      }
+      const overdueCheck = await client.query(
+        `SELECT expected_return_date < CURRENT_DATE AS is_overdue
+         FROM borrow_transactions
+         WHERE borrow_id = $1`,
+        [id]
+      );
+      if (!overdueCheck.rows[0]?.is_overdue) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'A transaction can only be marked Overdue after its expected return date has passed.' });
+      }
+    }
+
     if (status === 'Returned' && current.status === 'Returned') {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Transaction is already returned' });
+    }
+
+    if (status === 'Returned' && !['Borrowed', 'Overdue'].includes(current.status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A pending transaction must be approved as Borrowed before it can be returned' });
+    }
+
+    if (status === 'Borrowed' && !['Pending', 'Overdue'].includes(current.status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Only pending or overdue transactions can be set to Borrowed' });
+    }
+
+    if (status === 'Borrowed' && current.status === 'Pending') {
+      const stock = await client.query(
+        'SELECT quantity_on_hand FROM inventory_items WHERE item_id=$1 FOR UPDATE',
+        [current.item_id]
+      );
+      if (!stock.rows[0] || stock.rows[0].quantity_on_hand < current.quantity_borrowed) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Insufficient stock to approve this borrow' });
+      }
+      await client.query(
+        'UPDATE inventory_items SET quantity_on_hand = quantity_on_hand - $1 WHERE item_id=$2',
+        [current.quantity_borrowed, current.item_id]
+      );
+      await client.query(`
+        INSERT INTO consumption_tracking
+          (item_id, division_id, quantity_consumed, consumption_date)
+        VALUES ($1, $2, $3, CURRENT_DATE)
+        ON CONFLICT (item_id, division_id, consumption_date)
+        DO UPDATE SET quantity_consumed = consumption_tracking.quantity_consumed + EXCLUDED.quantity_consumed
+      `, [current.item_id, current.division_id, current.quantity_borrowed]);
     }
 
     if (status === 'Returned') {
@@ -55,20 +104,15 @@ async function handler(req, res) {
       );
       await client.query(
         `UPDATE requisitions SET status='Returned'
-         WHERE requisition_id=$1 AND requisition_id IS NOT NULL`,
+         WHERE requisition_id=$1`,
         [current.requisition_id]
       );
     }
 
-    if (status === 'Borrowed' && current.status === 'Overdue') {
-      await client.query(
-        'UPDATE inventory_items SET quantity_on_hand = quantity_on_hand - $1 WHERE item_id=$2',
-        [current.quantity_borrowed, current.item_id]
-      );
-    }
-
     await client.query(
-      'UPDATE borrow_transactions SET status=$1 WHERE borrow_id=$2',
+      `UPDATE borrow_transactions
+       SET status=$1, actual_return_date=CASE WHEN $1='Returned' THEN NOW() ELSE actual_return_date END
+       WHERE borrow_id=$2`,
       [status, id]
     );
 

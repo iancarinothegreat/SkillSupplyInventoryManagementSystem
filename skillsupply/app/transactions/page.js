@@ -4,6 +4,13 @@ import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
 
+function isPastExpectedReturn(dateValue) {
+  if (!dateValue) return false;
+  const expectedDate = new Date(dateValue);
+  if (Number.isNaN(expectedDate.getTime())) return false;
+  return expectedDate.toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10);
+}
+
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -184,6 +191,7 @@ export default function TransactionsPage() {
     }
   };
 
+  const pendingCount = transactions.filter(t => t.status === 'Pending').length;
   const activeCount = transactions.filter(t => t.status === 'Borrowed' || t.status === 'Issued' || t.status === 'Overdue').length;
   const borrowedCount = transactions.filter(t => t.status === 'Borrowed' || t.status === 'Issued').length;
   const overdueCount = transactions.filter(t => t.status === 'Overdue').length;
@@ -206,6 +214,13 @@ export default function TransactionsPage() {
 
 
   const statusBadge = (status) => {
+    if (status === 'Pending') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
+          Pending Review
+        </span>
+      );
+    }
     if (status === 'Returned') {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
@@ -294,12 +309,13 @@ export default function TransactionsPage() {
         )}
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => <SkeletonKpiCard key={i} />)
           ) : (
             <>
               <KpiCard label="Active" value={activeCount} />
+              <KpiCard label="Pending Review" value={pendingCount} />
               <KpiCard label="Borrowed" value={borrowedCount} />
               <KpiCard label="Overdue" value={overdueCount} />
               <KpiCard label="Returned" value={returnedCount} />
@@ -332,7 +348,7 @@ export default function TransactionsPage() {
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-600"
               >
-                {['All Status', 'Borrowed', 'Returned', 'Overdue'].map(s => (
+                {['All Status', 'Pending', 'Borrowed', 'Returned', 'Overdue'].map(s => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
@@ -639,7 +655,7 @@ export default function TransactionsPage() {
                       ));
                       setSelectedTx(prev => prev ? { ...prev, status: 'Borrowed' } : prev);
                       setShowReviewModal(false);
-                      setSuccess('Transaction reinstated as Borrowed.');
+                      setSuccess(selectedTx.status === 'Pending' ? 'Borrow request approved as Borrowed.' : 'Transaction reinstated as Borrowed.');
                     } catch (err) { console.error(err); setError('Server error.'); }
                   }}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
@@ -647,7 +663,7 @@ export default function TransactionsPage() {
                   Borrowed
                 </button>
                 )}
-                {selectedTx.status !== 'Returned' && (
+                {selectedTx.status !== 'Returned' && selectedTx.status !== 'Pending' && (
                   <button
                     onClick={() => {
                       setShowReviewModal(false);
@@ -661,7 +677,9 @@ export default function TransactionsPage() {
                     Returned
                   </button>
                 )}
-                {selectedTx.status !== 'Returned' && selectedTx.status !== 'Overdue' && (
+                {selectedTx.status !== 'Returned' &&
+                  selectedTx.status !== 'Overdue' &&
+                  isPastExpectedReturn(selectedTx.expected_return_date) && (
                   <button
                     onClick={async () => {
                       try {
