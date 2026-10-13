@@ -91,13 +91,20 @@ async function handler(req, res) {
             'UPDATE inventory_items SET quantity_on_hand = quantity_on_hand - $1 WHERE item_id=$2',
             [current.quantity_borrowed, current.item_id]
           );
-          await client.query(`
-            INSERT INTO consumption_tracking
-              (item_id, division_id, quantity_consumed, consumption_date)
-            VALUES ($1, $2, $3, CURRENT_DATE)
-            ON CONFLICT (item_id, division_id, consumption_date)
-            DO UPDATE SET quantity_consumed = consumption_tracking.quantity_consumed + EXCLUDED.quantity_consumed
-          `, [current.item_id, current.division_id, current.quantity_borrowed]);
+          const consumption = await client.query(
+            `UPDATE consumption_tracking
+             SET quantity_consumed = quantity_consumed + $3
+             WHERE item_id = $1 AND division_id = $2 AND consumption_date = CURRENT_DATE`,
+            [current.item_id, current.division_id, current.quantity_borrowed]
+          );
+          if (consumption.rowCount === 0) {
+            await client.query(
+              `INSERT INTO consumption_tracking
+                (item_id, division_id, quantity_consumed, consumption_date)
+               VALUES ($1, $2, $3, CURRENT_DATE)`,
+              [current.item_id, current.division_id, current.quantity_borrowed]
+            );
+          }
         }
         if (status === 'Returned') {
           if (!['Borrowed', 'Overdue'].includes(current.status)) {
