@@ -148,10 +148,10 @@ async function handler(req, res) {
           FROM generate_series(0, ${seriesBack}) i
         ),
         issued AS (
-          SELECT to_char(borrow_date, 'YYYY-MM') AS month, SUM(quantity_borrowed) AS issued
-          FROM borrow_transactions
+          SELECT to_char(bt.borrow_date, 'YYYY-MM') AS month, SUM(bt.quantity_borrowed) AS issued
+          FROM borrow_transactions bt
           ${trendBorrowWhere}
-          GROUP BY to_char(borrow_date, 'YYYY-MM')
+          GROUP BY to_char(bt.borrow_date, 'YYYY-MM')
         ),
         returned AS (
           SELECT to_char(bt.borrow_date, 'YYYY-MM') AS month, SUM(rt.quantity_returned) AS returned
