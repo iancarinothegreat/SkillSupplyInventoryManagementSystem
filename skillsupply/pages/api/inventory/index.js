@@ -1,5 +1,6 @@
 import { query } from '../../../lib/db.js';
 import { verifyToken, getTokenFromRequest } from '../../../lib/auth.js';
+import { parseMaxBorrowDays } from '../../../lib/utils.js';
 
 async function handler(req, res) {
   if (req.method === 'GET') {
@@ -12,11 +13,10 @@ async function handler(req, res) {
       const result = await query(`
         SELECT i.item_id, i.item_name, i.serial_number, i.category_id, i.division_id, i.unit_of_measure,
           i.quantity_on_hand, i.reorder_level, i.defective_quantity AS defective_qty,
-          i.quantity_on_hand + COALESCE(i.defective_quantity, 0) AS total_quantity, i.is_returnable, i.unit_cost, i.description, i.notes, i.is_active, i.created_at,
+          i.quantity_on_hand + COALESCE(i.defective_quantity, 0) AS total_quantity, i.is_returnable, i.is_borrowable, i.maximum_borrow_days, i.requires_mr, i.unit_cost, i.description, i.notes, i.is_active, i.created_at,
           c.category_name,
           d.division_name,
           CASE
-            WHEN i.quantity_on_hand = 0 THEN 'Out of Stock'
             WHEN i.quantity_on_hand <= i.reorder_level THEN 'Critical'
             WHEN i.quantity_on_hand <= i.reorder_level * 1.5 THEN 'Low Stock'
             ELSE 'Sufficient'
@@ -45,7 +45,7 @@ async function handler(req, res) {
     const {
       item_name, serial_number, category_id, division_id,
       unit_of_measure, quantity_on_hand,
-      reorder_level, defective_quantity, is_returnable, unit_cost, description, notes
+      reorder_level, defective_quantity, is_returnable, is_borrowable, maximum_borrow_days, requires_mr, unit_cost, description, notes
     } = req.body;
 
     if (!item_name) return res.status(400).json({ error: 'Item name required' });
@@ -54,10 +54,10 @@ async function handler(req, res) {
       const result = await query(`
         INSERT INTO inventory_items
           (item_name, serial_number, category_id, division_id, unit_of_measure, quantity_on_hand,
-           reorder_level, defective_quantity, is_returnable, unit_cost, description, notes)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           reorder_level, defective_quantity, is_returnable, is_borrowable, maximum_borrow_days, requires_mr, unit_cost, description, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         RETURNING *
-      `, [item_name, serial_number || null, category_id, division_id, unit_of_measure, quantity_on_hand || 0, reorder_level || 10, defective_quantity ?? 0, is_returnable ?? false, unit_cost, description || null, notes || null]);
+      `, [item_name, serial_number || null, category_id, division_id, unit_of_measure, quantity_on_hand || 0, reorder_level || 10, defective_quantity ?? 0, is_returnable ?? false, is_borrowable ?? true, parseMaxBorrowDays(maximum_borrow_days), requires_mr ?? false, unit_cost, description || null, notes || null]);
 
       await query(`
         INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)

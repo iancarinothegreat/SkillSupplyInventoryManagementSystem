@@ -18,7 +18,7 @@ export default function InventoryPage() {
   const [editItem, setEditItem] = useState(null);
   const [form, setForm] = useState({
     item_name: '', serial_number: '', category_id: '', division_id: '', unit: '',
-    quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, notes: ''
+    quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, is_borrowable: true, maximum_borrow_days: '', requires_mr: false, notes: ''
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -49,6 +49,11 @@ export default function InventoryPage() {
       reorder_level: values.reorder_point || 10,
       defective_quantity: values.defective_quantity || 0,
       is_returnable: values.is_returnable,
+      is_borrowable: values.is_borrowable ?? true,
+      maximum_borrow_days: values.maximum_borrow_days === '' || values.maximum_borrow_days === null || typeof values.maximum_borrow_days === 'undefined'
+        ? null
+        : Number(values.maximum_borrow_days),
+      requires_mr: values.requires_mr ?? false,
       description: values.description || null,
       notes: values.notes || null,
       unit_cost: values.unit_price || 0,
@@ -224,7 +229,7 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditItem(null);
-    setForm({ item_name: '', serial_number: '', category_id: '', division_id: '', unit: '', quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, notes: '' });
+    setForm({ item_name: '', serial_number: '', category_id: '', division_id: '', unit: '', quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, is_borrowable: true, maximum_borrow_days: '', requires_mr: false, notes: '' });
     setError('');
     setShowModal(true);
   }
@@ -243,6 +248,9 @@ export default function InventoryPage() {
       description: item.description ?? '',
       defective_quantity: item.defective_qty ?? item.defective_quantity ?? '',
       is_returnable: item.is_returnable ?? item.returnable ?? false,
+      is_borrowable: item.is_borrowable ?? true,
+      maximum_borrow_days: item.maximum_borrow_days ?? '',
+      requires_mr: item.requires_mr ?? false,
       notes: item.notes ?? ''
     });
     setError('');
@@ -314,8 +322,7 @@ export default function InventoryPage() {
   function getStockStatus(item) {
     const qty = parseInt(item.quantity || 0);
     const reorder = parseInt(item.reorder_point || 0);
-    if (qty === 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-700', bar: 'bg-red-500', pct: 0 };
-    if (qty <= reorder) return { label: 'Critical', color: 'bg-red-100 text-red-600', bar: 'bg-red-500', pct: Math.min((qty / (reorder * 2)) * 100, 100) };
+    if (qty <= reorder) return { label: 'Critical', color: 'bg-red-100 text-red-700', bar: 'bg-red-500', pct: reorder > 0 ? Math.min((qty / (reorder * 2)) * 100, 100) : 0 };
     if (qty <= reorder * 1.5) return { label: 'Low', color: 'bg-yellow-100 text-yellow-700', bar: 'bg-yellow-400', pct: Math.min((qty / (reorder * 3)) * 100, 100) };
     return { label: 'Sufficient', color: 'bg-green-100 text-green-700', bar: 'bg-green-500', pct: 100 };
   }
@@ -520,7 +527,7 @@ export default function InventoryPage() {
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Quantity</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Defective Qty</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Total Quantity</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Returnable</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Borrow / MR Rules</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Status</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Unit Cost</th>
                   <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Actions</th>
@@ -555,7 +562,14 @@ export default function InventoryPage() {
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {item.total_quantity ?? ((item.quantity ?? 0) + (parseInt(item.defective_qty ?? item.defectiveQty ?? 0) || 0))}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{(item.is_returnable ?? item.returnable) ? 'Yes' : 'No'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">
+                        {(item.is_returnable ?? item.returnable) ? 'Returnable' : 'Non-returnable'}
+                        {' · '}
+                        {(item.is_borrowable ?? true)
+                          ? (item.maximum_borrow_days ? `Max ${item.maximum_borrow_days}d` : 'Borrowable')
+                          : 'Not borrowable'}
+                        {item.requires_mr ? ' · MR required' : ''}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${status.color}`}>
                           {status.label}
@@ -703,6 +717,38 @@ export default function InventoryPage() {
                     </label>
                   </div>
                 </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="flex items-end pb-1">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.is_borrowable}
+                        onChange={e => setForm({ ...form, is_borrowable: e.target.checked })}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Borrowable
+                    </label>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Maximum Days to Borrow</label>
+                    <input type="number" min="1" value={form.maximum_borrow_days}
+                      disabled={!form.is_borrowable}
+                      onChange={e => setForm({ ...form, maximum_borrow_days: e.target.value })}
+                      placeholder="e.g. 7"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100" />
+                  </div>
+                  <div className="flex items-end pb-1">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.requires_mr}
+                        onChange={e => setForm({ ...form, requires_mr: e.target.checked })}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Requires MR Receipt
+                    </label>
+                  </div>
+                </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Defective Notes</label>
                   <textarea rows={2} value={form.notes}
@@ -747,6 +793,10 @@ export default function InventoryPage() {
                   ['Reorder Point', viewItem.reorder_point],
                   ['Defective Qty', parseInt(viewItem.defective_qty ?? viewItem.defectiveQty ?? 0) || 0],
                   ['Returnable', (viewItem.is_returnable ?? viewItem.returnable) ? 'Yes' : 'No'],
+                  ['Borrowable', (viewItem.is_borrowable ?? true) ? 'Yes' : 'No'],
+                  ['Maximum Days to Borrow', viewItem.maximum_borrow_days ? `${viewItem.maximum_borrow_days} day(s)` : (viewItem.is_borrowable === false ? 'Not borrowable' : 'No limit')],
+                  ['Requires MR Receipt', viewItem.requires_mr ? 'Yes' : 'No'],
+                  ['Stock Status', getStockStatus(viewItem).label],
                   ['Unit Price', viewItem.unit_price ? `₱${parseFloat(viewItem.unit_price).toLocaleString()}` : '—'],
                   ['Defective Notes', viewItem.notes || '—'],
                   ['Description', viewItem.description || '—'],

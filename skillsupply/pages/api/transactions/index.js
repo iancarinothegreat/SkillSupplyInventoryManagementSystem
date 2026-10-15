@@ -1,5 +1,6 @@
 import { query, transaction } from '../../../lib/db.js';
 import { withAuth } from '../../../lib/rbac.js';
+import { createNotification, NOTIFICATION_TYPES } from '../../../lib/notifications.js';
 
 async function handler(req, res) {
   if (req.method === 'GET') {
@@ -15,6 +16,7 @@ async function handler(req, res) {
             ELSE bt.status
           END AS status,
           i.item_name, i.unit_of_measure,
+          i.requires_mr, i.is_borrowable, i.maximum_borrow_days,
           COALESCE(NULLIF(bt.borrower_name, ''), u.full_name) AS borrower_name,
           d.division_name,
           rt.condition_returned,
@@ -130,12 +132,43 @@ async function handler(req, res) {
            RETURNING *`,
           [status, status, id]
         );
-        return result.rows[0];
+        const updatedRow = result.rows[0];
+
+        const itemDetails = await client.query(
+          'SELECT item_name, unit_of_measure FROM inventory_items WHERE item_id=$1',
+          [current.item_id]
+        );
+        const item = itemDetails.rows[0] || {};
+
+        await client.query(
+          'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6)',
+          [
+            req.user.user_id,
+            req.user.username || null,
+            'UPDATE_STATUS',
+            'borrow_transactions',
+            String(id),
+            JSON.stringify({ status: current.status, quantity_borrowed: current.quantity_borrowed, expected_return_date: current.expected_return_date }),
+            JSON.stringify({ ...updatedRow, previous_status: current.status, changed_by: req.user.full_name || req.user.username || null })
+          ]
+        );
+
+        await createNotification(client, {
+          type: NOTIFICATION_TYPES.BORROW_STATUS,
+          title: `Borrow request ${status.toLowerCase()}`,
+          message: `${req.user.full_name || req.user.username} marked borrow request #${id} as ${status} — ${current.quantity_borrowed} ${item.unit_of_measure || 'unit(s)'} of ${item.item_name || 'item'}.`,
+          link: '/transactions',
+          referenceId: Number(id),
+          includeUserIds: current.user_id ? [current.user_id] : [],
+          excludeUserId: req.user.user_id
+        });
+
+        return updatedRow;
       });
       return res.status(200).json(updated);
     } catch (err) {
       console.error(err);
-      return res.status(500).json({ error: 'Server error' });
+      return res.status(err.statusCode || 500).json({ error: err.message || 'Server error' });
     }
   }
 

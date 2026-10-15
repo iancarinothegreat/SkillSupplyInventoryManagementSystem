@@ -13,6 +13,24 @@ export default function RequisitionsPage() {
   const [error, setError] = useState('');
   const [selectedReq, setSelectedReq] = useState(null);
   const [remarks, setRemarks] = useState('');
+  const [approvedQty, setApprovedQty] = useState('');
+  const [mrNumber, setMrNumber] = useState('');
+
+  const openReview = (r) => {
+    setSelectedReq(r);
+    setRemarks('');
+    setApprovedQty(String(r.quantity ?? ''));
+    setMrNumber(r.mr_number || '');
+    setError('');
+    setSuccess('');
+  };
+
+  const closeReview = () => {
+    setSelectedReq(null);
+    setRemarks('');
+    setApprovedQty('');
+    setMrNumber('');
+  };
 
   const fetchRequisitions = useCallback(async () => {
     try {
@@ -57,19 +75,25 @@ export default function RequisitionsPage() {
     setSuccess('');
     try {
       const token = sessionStorage.getItem('token');
+      const body = { status: action, remarks };
+      if (action === 'Approved' && approvedQty !== '') {
+        body.approved_quantity = Number(approvedQty);
+      }
+      if (action === 'Released' && mrNumber.trim()) {
+        body.mr_number = mrNumber.trim();
+      }
       const res = await fetch(`/api/requests/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: action, remarks }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (res.ok) {
         setSuccess(`Request #${id} has been ${action.toLowerCase()}.`);
-        setSelectedReq(null);
-        setRemarks('');
+        closeReview();
         fetchRequisitions();
         broadcastRequisitionUpdate();
         setTimeout(() => setSuccess(''), 5000);
@@ -158,7 +182,7 @@ export default function RequisitionsPage() {
             <table className="min-w-full divide-y divide-gray-100">
               <thead className="bg-gray-50">
                 <tr>
-                  {['ID', 'Requested By', 'Division', 'Item', 'Qty', 'Purpose', 'Date', 'Status', 'Action'].map((h) => (
+                  {['ID', 'Requested By', 'Division', 'Item', 'Qty', 'Stock', 'Purpose', 'Date', 'Status', 'Action'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -176,7 +200,7 @@ export default function RequisitionsPage() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['ID', 'Requested By', 'Division', 'Item', 'Qty', 'Purpose', 'Date', 'Status', 'Action'].map((h) => (
+                    {['ID', 'Requested By', 'Division', 'Item', 'Qty', 'Stock', 'Purpose', 'Date', 'Status', 'Action'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                         {h}
                       </th>
@@ -190,21 +214,29 @@ export default function RequisitionsPage() {
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{r.requester_name || r.username}</td>
                       <td className="px-4 py-3 text-sm text-gray-500">{r.division_name}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{r.item_name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{r.quantity}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {r.quantity}
+                        {r.quantity_approved !== null && typeof r.quantity_approved !== 'undefined' && Number(r.quantity_approved) !== Number(r.quantity) && (
+                          <span className="block text-xs text-orange-600 font-medium">Approved: {r.quantity_approved}</span>
+                        )}
+                      </td>
+                      <td className={`px-4 py-3 text-sm ${Number(r.available_stock) < Number(r.quantity) ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                        {r.available_stock ?? '—'}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{r.purpose}</td>
                       <td className="px-4 py-3 text-sm text-gray-500">{new Date(r.created_at).toLocaleDateString()}</td>
                       <td className="px-4 py-3"><span className={statusBadge(r.status)}>{r.status}</span></td>
                       <td className="px-4 py-3">
                         {r.status === 'Pending' ? (
                           <button
-                            onClick={() => setSelectedReq(r)}
+                            onClick={() => openReview(r)}
                             className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium transition"
                           >
                             Review
                           </button>
                         ) : r.status === 'Approved' ? (
                           <button
-                            onClick={() => setSelectedReq(r)}
+                            onClick={() => openReview(r)}
                             className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium transition"
                           >
                             Release
@@ -235,9 +267,38 @@ export default function RequisitionsPage() {
                 <div className="flex justify-between"><span className="text-gray-500">Requested by</span><span className="font-medium">{selectedReq.requester_name || selectedReq.username}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Division</span><span>{selectedReq.division_name}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Item</span><span className="font-medium">{selectedReq.item_name}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Quantity</span><span>{selectedReq.quantity}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Requested Quantity</span><span>{selectedReq.quantity} {selectedReq.unit_of_measure || ''}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Available Stock</span>
+                  <span className={Number(selectedReq.available_stock) < Number(selectedReq.quantity) ? 'font-semibold text-red-600' : 'font-semibold text-gray-800'}>
+                    {selectedReq.available_stock ?? '—'} {selectedReq.unit_of_measure || ''}
+                  </span>
+                </div>
                 <div className="flex justify-between"><span className="text-gray-500">Purpose</span><span className="text-right max-w-xs">{selectedReq.purpose}</span></div>
+                {selectedReq.requires_mr ? (
+                  <div className="flex justify-between"><span className="text-gray-500">MR Receipt</span><span className="text-blue-600 font-medium">Required</span></div>
+                ) : null}
               </div>
+              {selectedReq.status === 'Pending' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Approved Quantity {Number(selectedReq.available_stock) < Number(selectedReq.quantity) ? '(stock is short — adjust as needed)' : ''}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={selectedReq.quantity}
+                    value={approvedQty}
+                    onChange={(e) => setApprovedQty(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Requested {selectedReq.quantity} • Available {selectedReq.available_stock ?? '—'}
+                    {Number(approvedQty) > Number(selectedReq.quantity) ? ' • Cannot approve more than requested' : ''}
+                    {Number(approvedQty) > Number(selectedReq.available_stock) ? ' • Exceeds available stock' : ''}
+                  </p>
+                </div>
+              )}
               {selectedReq.status === 'Pending' && <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Remarks (optional)</label>
                 <textarea
@@ -248,9 +309,22 @@ export default function RequisitionsPage() {
                   placeholder="Add remarks..."
                 />
               </div>}
+              {selectedReq.status === 'Approved' && selectedReq.requires_mr && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">MR (Memorandum Receipt) Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={mrNumber}
+                    onChange={(e) => setMrNumber(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. MR-2026-001"
+                  />
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => { setSelectedReq(null); setRemarks(''); }}
+                  onClick={closeReview}
                   className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition"
                 >
                   Cancel
@@ -266,7 +340,11 @@ export default function RequisitionsPage() {
                     </button>
                     <button
                       onClick={() => handleAction(selectedReq.id, 'Approved')}
-                      disabled={processing === selectedReq.id}
+                      disabled={processing === selectedReq.id
+                        || approvedQty === ''
+                        || Number(approvedQty) < 1
+                        || Number(approvedQty) > Number(selectedReq.quantity)
+                        || Number(approvedQty) > Number(selectedReq.available_stock)}
                       className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition"
                     >
                       Approve
@@ -275,7 +353,7 @@ export default function RequisitionsPage() {
                 ) : (
                   <button
                     onClick={() => handleAction(selectedReq.id, 'Released')}
-                    disabled={processing === selectedReq.id}
+                    disabled={processing === selectedReq.id || (selectedReq.requires_mr && !mrNumber.trim())}
                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
                   >
                     Release Item

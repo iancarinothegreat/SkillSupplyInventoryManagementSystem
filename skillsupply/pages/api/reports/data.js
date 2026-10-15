@@ -5,12 +5,12 @@ import PDFDocument from 'pdfkit';
 const REPORTS = {
   dashboard: {
     title: 'Dashboard Summary',
-    query: `SELECT COUNT(*) AS "Total Items", COALESCE(SUM(i.quantity_on_hand), 0) AS "Total Stock Units", COALESCE(SUM(CASE WHEN i.quantity_on_hand = 0 THEN 1 ELSE 0 END), 0) AS "Out of Stock", COALESCE(SUM(CASE WHEN i.quantity_on_hand > 0 AND i.quantity_on_hand <= i.reorder_level THEN 1 ELSE 0 END), 0) AS "Low Stock", COALESCE(SUM(i.quantity_on_hand * COALESCE(i.unit_cost, 0)), 0) AS "Inventory Value" FROM inventory_items i WHERE i.is_active = true`,
+    query: `SELECT COUNT(*) AS "Total Items", COALESCE(SUM(i.quantity_on_hand), 0) AS "Total Stock Units", COALESCE(SUM(CASE WHEN i.quantity_on_hand <= i.reorder_level THEN 1 ELSE 0 END), 0) AS "Critical", COALESCE(SUM(CASE WHEN i.quantity_on_hand > i.reorder_level AND i.quantity_on_hand <= i.reorder_level * 1.5 THEN 1 ELSE 0 END), 0) AS "Low Stock", COALESCE(SUM(i.quantity_on_hand * COALESCE(i.unit_cost, 0)), 0) AS "Inventory Value" FROM inventory_items i WHERE i.is_active = true`,
     filters: ['division'],
   },
   inventory: {
     title: 'Inventory Status',
-    query: `SELECT i.item_name AS "Item", c.category_name AS "Category", d.division_name AS "Division", i.quantity_on_hand AS "Quantity", i.unit_of_measure AS "Unit", i.reorder_level AS "Reorder Point", i.unit_cost AS "Unit Cost", CASE WHEN i.quantity_on_hand = 0 THEN 'Out of Stock' WHEN i.quantity_on_hand <= i.reorder_level THEN 'Low Stock' ELSE 'In Stock' END AS "Status" FROM inventory_items i LEFT JOIN categories c ON i.category_id = c.category_id LEFT JOIN divisions d ON i.division_id = d.division_id WHERE i.is_active = true`,
+    query: `SELECT i.item_name AS "Item", c.category_name AS "Category", d.division_name AS "Division", i.quantity_on_hand AS "Quantity", i.unit_of_measure AS "Unit", i.reorder_level AS "Reorder Point", i.unit_cost AS "Unit Cost", CASE WHEN i.quantity_on_hand <= i.reorder_level THEN 'Critical' WHEN i.quantity_on_hand <= i.reorder_level * 1.5 THEN 'Low Stock' ELSE 'In Stock' END AS "Status" FROM inventory_items i LEFT JOIN categories c ON i.category_id = c.category_id LEFT JOIN divisions d ON i.division_id = d.division_id WHERE i.is_active = true`,
     filters: ['division', 'category', 'status'],
   },
   inventory_value: {
@@ -24,8 +24,8 @@ const REPORTS = {
     filters: ['division', 'category'],
   },
   outofstock: {
-    title: 'Out of Stock',
-    query: `SELECT i.item_name AS "Item", c.category_name AS "Category", d.division_name AS "Division", i.reorder_level AS "Reorder Point" FROM inventory_items i LEFT JOIN categories c ON i.category_id = c.category_id LEFT JOIN divisions d ON i.division_id = d.division_id WHERE i.is_active = true AND i.quantity_on_hand = 0`,
+    title: 'Critical Stock (Zero / Reorder Level)',
+    query: `SELECT i.item_name AS "Item", c.category_name AS "Category", d.division_name AS "Division", i.quantity_on_hand AS "Quantity", i.reorder_level AS "Reorder Point" FROM inventory_items i LEFT JOIN categories c ON i.category_id = c.category_id LEFT JOIN divisions d ON i.division_id = d.division_id WHERE i.is_active = true AND i.quantity_on_hand <= i.reorder_level ORDER BY i.quantity_on_hand ASC`,
     filters: ['division', 'category'],
   },
   inventory_category: {
@@ -305,7 +305,7 @@ async function handler(req, res) {
             ? null
             : 'bt.status';
       if (report === 'inventory') {
-        query += ` AND CASE WHEN i.quantity_on_hand = 0 THEN 'Out of Stock' WHEN i.quantity_on_hand <= i.reorder_level THEN 'Low Stock' ELSE 'In Stock' END = ${add(status)}`;
+        query += ` AND CASE WHEN i.quantity_on_hand <= i.reorder_level THEN 'Critical' WHEN i.quantity_on_hand <= i.reorder_level * 1.5 THEN 'Low Stock' ELSE 'In Stock' END = ${add(status)}`;
       } else {
         query += ` AND ${statusColumn} = ${add(status)}`;
       }

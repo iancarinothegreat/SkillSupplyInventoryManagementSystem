@@ -11,6 +11,16 @@ function isPastExpectedReturn(dateValue) {
   return expectedDate.toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10);
 }
 
+function datePlusDays(days) {
+  const base = new Date();
+  const utc = Date.UTC(base.getFullYear(), base.getMonth(), base.getDate());
+  return new Date(utc + days * 86400000).toISOString().slice(0, 10);
+}
+
+function maxDaysFor(item) {
+  return item && Number(item.maximum_borrow_days) > 0 ? Number(item.maximum_borrow_days) : null;
+}
+
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -35,6 +45,7 @@ export default function TransactionsPage() {
     borrower_name: '',
     purpose: '',
     expected_return_date: '',
+    mr_number: '',
   });
 
 
@@ -43,6 +54,22 @@ export default function TransactionsPage() {
     condition_on_return: 'Good',
     remarks: '',
   });
+
+  const [mrInput, setMrInput] = useState('');
+
+  useEffect(() => {
+    if (!showReviewModal) setMrInput('');
+  }, [showReviewModal]);
+
+  const selectedBorrowItem = inventory.find((i) => String(i.item_id) === String(borrowForm.item_id)) || null;
+  const borrowMaxDays = maxDaysFor(selectedBorrowItem);
+  const borrowAvailable = selectedBorrowItem ? Number(selectedBorrowItem.quantity_on_hand) || 0 : null;
+  const borrowQty = Number(borrowForm.quantity_borrowed) || 0;
+  const borrowOverStock = selectedBorrowItem && borrowQty > borrowAvailable;
+  const borrowReturnMax = borrowMaxDays ? datePlusDays(borrowMaxDays) : '';
+  const borrowExceedsMax = Boolean(borrowMaxDays && borrowForm.expected_return_date && borrowForm.expected_return_date > borrowReturnMax);
+  const borrowNeedsMr = Boolean(selectedBorrowItem?.requires_mr);
+  const borrowFormValid = !borrowOverStock && !borrowExceedsMax && (!borrowNeedsMr || String(borrowForm.mr_number || '').trim() !== '');
 
   const fetchTransactions = useCallback(async () => {
     try {
@@ -144,7 +171,7 @@ export default function TransactionsPage() {
       if (res.ok) {
         setSuccess('Borrow transaction recorded successfully.');
         setShowBorrowModal(false);
-        setBorrowForm({ item_id: '', division_id: '', quantity_borrowed: '', borrower_name: '', purpose: '', expected_return_date: '' });
+        setBorrowForm({ item_id: '', division_id: '', quantity_borrowed: '', borrower_name: '', purpose: '', expected_return_date: '', mr_number: '' });
 
 
         fetchTransactions();
@@ -197,7 +224,7 @@ export default function TransactionsPage() {
   const overdueCount = transactions.filter(t => t.status === 'Overdue').length;
   const returnedCount = transactions.filter(t => t.status === 'Returned').length;
   const pendingTransactions = transactions.filter(t => t.status !== 'Returned' && t.status !== 'Cancelled');
-  const borrowableItems = inventory.filter(i => (i.quantity_on_hand ?? 0) > 0 && i.is_returnable);
+  const borrowableItems = inventory.filter(i => (i.quantity_on_hand ?? 0) > 0 && i.is_returnable !== false && (i.is_borrowable ?? true));
 
   const filteredTransactions = transactions.filter(t => {
     const quantityText = String(t.quantity ?? t.quantity_borrowed ?? '');
@@ -451,18 +478,57 @@ export default function TransactionsPage() {
                 <select
                   required
                   value={borrowForm.item_id}
-                  onChange={(e) => setBorrowForm({ ...borrowForm, item_id: e.target.value })}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const item = inventory.find((i) => String(i.item_id) === String(id));
+                    const max = maxDaysFor(item);
+                    setBorrowForm({
+                      ...borrowForm,
+                      item_id: id,
+                      expected_return_date: datePlusDays(max ?? 7),
+                      mr_number: '',
+                    });
+                  }}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select item...</option>
                   {borrowableItems.map((item) => (
                     <option key={item.item_id} value={item.item_id}>
-                      {item.item_name} (Stock: {item.quantity_on_hand})
+                      {item.item_name}
                     </option>
                   ))}
                 </select>
                 {borrowableItems.length === 0 && (
                   <p className="mt-1 text-xs text-gray-500">No returnable items available for borrowing.</p>
+                )}
+                {selectedBorrowItem && (
+                  <div className={`mt-2 rounded-lg border px-3 py-2 text-xs space-y-1 ${borrowOverStock ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      <span className="text-gray-500">Item:</span>
+                      <span className="font-semibold text-gray-800">{selectedBorrowItem.item_name}</span>
+                      <span className="text-gray-500">Available Stock:</span>
+                      <span className={`font-semibold ${borrowOverStock ? 'text-red-600' : 'text-gray-800'}`}>
+                        {borrowAvailable} {selectedBorrowItem.unit_of_measure}
+                      </span>
+                      <span className="text-gray-500">Quantity to Borrow:</span>
+                      <span className={`font-semibold ${borrowOverStock ? 'text-red-600' : 'text-gray-800'}`}>
+                        {borrowQty || 0} {selectedBorrowItem.unit_of_measure}
+                      </span>
+                    </div>
+                    {borrowQty > 0 && (
+                      <p className={borrowOverStock ? 'text-red-600' : 'text-green-600'}>
+                        {borrowOverStock
+                          ? `Exceeds available stock by ${borrowQty - borrowAvailable} ${selectedBorrowItem.unit_of_measure}.`
+                          : 'Within available stock.'}
+                      </p>
+                    )}
+                    <p className="text-gray-600">
+                      Classification: {(selectedBorrowItem.is_returnable !== false) ? 'Returnable' : 'Non-returnable'}
+                      {' · '}{(selectedBorrowItem.is_borrowable ?? true) ? 'Borrowable' : 'Not borrowable'}
+                      {' · '}{borrowMaxDays ? `Maximum of ${borrowMaxDays} day(s) to borrow` : 'No borrowing period limit'}
+                      {selectedBorrowItem.requires_mr ? ' · Requires MR Receipt' : ''}
+                    </p>
+                  </div>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -481,12 +547,33 @@ export default function TransactionsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Expected Return *</label>
                   <input
                     type="date" required
+                    min={datePlusDays(0)}
+                    max={borrowReturnMax || undefined}
                     value={borrowForm.expected_return_date}
                     onChange={(e) => setBorrowForm({ ...borrowForm, expected_return_date: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  <p className={`mt-1 text-xs ${borrowExceedsMax ? 'text-red-600' : 'text-gray-400'}`}>
+                    {borrowMaxDays
+                      ? (borrowExceedsMax
+                        ? `Exceeds the ${borrowMaxDays}-day borrowing limit.`
+                        : `Maximum ${borrowMaxDays} day(s) — on or before ${borrowReturnMax}`)
+                      : 'Default 7 days if left unchanged'}
+                  </p>
                 </div>
               </div>
+              {borrowNeedsMr && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">MR (Memorandum Receipt) Number *</label>
+                  <input
+                    type="text" required
+                    value={borrowForm.mr_number}
+                    onChange={(e) => setBorrowForm({ ...borrowForm, mr_number: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. MR-2026-001"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Borrower Name *</label>
                 <input
@@ -526,7 +613,7 @@ export default function TransactionsPage() {
                 <button type="button" onClick={() => setShowBorrowModal(false)} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">
                   Cancel
                 </button>
-                <button type="submit" disabled={submitting} className="flex-1 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 disabled:opacity-50 transition">
+                <button type="submit" disabled={submitting || !borrowFormValid} className="flex-1 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 disabled:opacity-50 transition">
                   {submitting ? 'Recording...' : 'Record Borrow'}
                 </button>
               </div>
@@ -629,21 +716,49 @@ export default function TransactionsPage() {
                 {selectedTx.return_remarks && (
                   <div className="flex justify-between gap-4"><span className="text-gray-500">Return Remarks</span><span className="text-right max-w-xs whitespace-pre-wrap">{selectedTx.return_remarks}</span></div>
                 )}
+                <div className="flex justify-between"><span className="text-gray-500">Borrowing Rule</span>
+                  <span className="text-right">
+                    {(selectedTx.is_borrowable ?? true) ? 'Borrowable' : 'Not borrowable'}
+                    {' · '}{selectedTx.maximum_borrow_days ? `Max ${selectedTx.maximum_borrow_days} day(s)` : 'No period limit'}
+                  </span>
+                </div>
+                <div className="flex justify-between"><span className="text-gray-500">MR Receipt</span>
+                  <span className={selectedTx.requires_mr ? 'text-blue-600 font-medium' : ''}>
+                    {selectedTx.mr_number ? selectedTx.mr_number : (selectedTx.requires_mr ? 'Required' : 'Not required')}
+                  </span>
+                </div>
                 <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                   <span className="text-gray-500">Status</span>
                   {statusBadge(selectedTx.status)}
                 </div>
               </div>
+              {selectedTx.status === 'Pending' && selectedTx.requires_mr && !selectedTx.mr_number && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">MR (Memorandum Receipt) Number *</label>
+                  <input
+                    type="text"
+                    value={mrInput}
+                    onChange={(e) => setMrInput(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. MR-2026-001"
+                  />
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 {selectedTx.status !== 'Returned' && (
                 <button
                   onClick={async () => {
                     try {
+                      const mrNumber = (mrInput || '').trim() || selectedTx.mr_number || '';
+                      if (selectedTx.requires_mr && !mrNumber) {
+                        setError('An MR (Memorandum Receipt) number is required for this item.');
+                        return;
+                      }
                       const token = sessionStorage.getItem('token');
                       const res = await fetch(`/api/transactions/${selectedTx.borrow_id}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ status: 'Borrowed' }),
+                        body: JSON.stringify({ status: 'Borrowed', mr_number: mrNumber || undefined }),
                       });
                       if (!res.ok) {
                         const data = await res.json();

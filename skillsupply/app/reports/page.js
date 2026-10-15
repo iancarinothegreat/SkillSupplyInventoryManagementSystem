@@ -22,7 +22,7 @@ const REPORT_TYPES = [
   { group: 'Inventory', value: 'inventory', label: 'Inventory Status' },
   { group: 'Inventory', value: 'inventory_value', label: 'Inventory Valuation' },
   { group: 'Inventory', value: 'lowstock', label: 'Critical Reorder Report' },
-  { group: 'Inventory', value: 'outofstock', label: 'Out of Stock' },
+  { group: 'Inventory', value: 'outofstock', label: 'Critical Stock' },
   { group: 'Inventory', value: 'inventory_category', label: 'Inventory by Category' },
   { group: 'Inventory', value: 'inventory_division', label: 'Inventory by Division' },
   { group: 'Inventory', value: 'defective', label: 'Defective Stock' },
@@ -104,7 +104,7 @@ export default function ReportsPage() {
 
   const getStatusOptions = (report) => {
     if (report === 'inventory') {
-      return ['Out of Stock', 'Low Stock', 'In Stock'];
+      return ['Critical', 'Low Stock', 'In Stock'];
     }
     if (
       report === 'transactions' ||

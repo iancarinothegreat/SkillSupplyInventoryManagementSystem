@@ -31,6 +31,16 @@ const FIELD_ALIASES = {
   division_name: [
     'division', 'division name', 'department', 'office', 'section'
   ],
+  is_borrowable: [
+    'is borrowable', 'borrowable', 'can borrow', 'borrow allowed'
+  ],
+  maximum_borrow_days: [
+    'maximum borrow days', 'max borrow days', 'max days to borrow',
+    'maximum days to borrow', 'borrowing period', 'borrow period'
+  ],
+  requires_mr: [
+    'requires mr', 'mr required', 'requires mr receipt', 'memorandum receipt', 'mr'
+  ],
 };
 
 function normalizeHeader(value) {
@@ -50,6 +60,14 @@ function toNumber(value, fallback = 0) {
 
 function cleanText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function toBool(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  const val = String(value ?? '').toLowerCase().trim();
+  if (['true', '1', 'yes', 'y'].includes(val)) return true;
+  if (['false', '0', 'no', 'n'].includes(val)) return false;
+  return fallback;
 }
 
 function getCell(row, index) {
@@ -142,11 +160,12 @@ function normalizeRow(row) {
   const quantity_on_hand = toNumber(getValue(row, 'quantity_on_hand', [4, 3]), 0);
   const reorder_level = toNumber(getValue(row, 'reorder_level'), 10);
   const defective_qty = toNumber(getValue(row, 'defective_qty', [6]), 0);
-  const is_returnable = (() => {
-    const val = getValue(row, 'is_returnable', [7]).toLowerCase();
-    if (['true', '1', 'yes', 'y'].includes(val)) return true;
-    if (['false', '0', 'no', 'n'].includes(val)) return false;
-    return false;
+  const is_returnable = toBool(getValue(row, 'is_returnable', [7]), false);
+  const is_borrowable = toBool(getValue(row, 'is_borrowable'), true);
+  const requires_mr = toBool(getValue(row, 'requires_mr'), false);
+  const maximum_borrow_days = (() => {
+    const parsed = toNumber(getValue(row, 'maximum_borrow_days'), NaN);
+    return Number.isInteger(parsed) && parsed >= 1 ? parsed : null;
   })();
   const unit_cost = toNumber(getValue(row, 'unit_cost', [3, 5]), 0);
   const category_name = cleanText(getValue(row, 'category_name'));
@@ -160,6 +179,9 @@ function normalizeRow(row) {
     reorder_level,
     defective_qty,
     is_returnable,
+    is_borrowable,
+    requires_mr,
+    maximum_borrow_days,
     unit_cost,
     category_name,
     division_name,
@@ -210,16 +232,19 @@ async function handler(req, res) {
           let paramIdx = 1;
 
           for (const item of chunk) {
-            values.push(`($${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},true)`);
+            values.push(`($${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++},true,$${paramIdx++},$${paramIdx++},$${paramIdx++},$${paramIdx++})`);
             params.push(
               item.item_name, item.serial_number || null, item.categoryId, item.divisionId,
-              item.unit_of_measure, item.quantity_on_hand, item.reorder_level, item.unit_cost
+              item.unit_of_measure, item.quantity_on_hand, item.reorder_level, item.unit_cost,
+              item.is_returnable ?? false, item.is_borrowable ?? true, item.maximum_borrow_days ?? null,
+              item.requires_mr ?? false
             );
           }
 
           const result = await client.query(
             `INSERT INTO inventory_items
-              (item_name, serial_number, category_id, division_id, unit_of_measure, quantity_on_hand, reorder_level, unit_cost, is_active)
+              (item_name, serial_number, category_id, division_id, unit_of_measure, quantity_on_hand, reorder_level, unit_cost, is_active,
+               is_returnable, is_borrowable, maximum_borrow_days, requires_mr)
             VALUES ${values.join(',')}
             RETURNING *`,
             params

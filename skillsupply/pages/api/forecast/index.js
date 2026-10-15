@@ -2,6 +2,7 @@ import { query } from '../../../lib/db.js';
 import { withAuth } from '../../../lib/rbac.js';
 
 async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
   try {
     const requestedWindow = Number.parseInt(req.query.window, 10);
     const windowMonths = Number.isFinite(requestedWindow)

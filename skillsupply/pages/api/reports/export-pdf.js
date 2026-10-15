@@ -127,7 +127,7 @@ async function generateInventoryReport(doc, db) {
       doc.moveDown(1);
     }
     const y = doc.y;
-    const status = row.quantity === 0 ? 'Out of Stock' : row.quantity <= row.reorder_point ? 'Low Stock' : 'In Stock';
+    const status = row.quantity <= row.reorder_point ? 'Critical' : row.quantity <= row.reorder_point * 1.5 ? 'Low Stock' : 'In Stock';
     doc.fontSize(8).font('Helvetica').fillColor(idx % 2 === 0 ? '#000' : '#333');
     doc.text(row.name, cols[0], y, { width: 145 });
     doc.text(row.category || '—', cols[1], y, { width: 95 });
@@ -255,7 +255,7 @@ async function generateLowStockReport(doc, db) {
     doc.fillColor('#d97706').text(String(deficit), cols[4], y, { width: 65 });
     doc
       .fillColor(row.quantity === 0 ? '#dc2626' : '#d97706')
-      .text(row.quantity === 0 ? 'Out of Stock' : 'Reorder', cols[5], y, { width: 60 });
+      .text(row.quantity <= row.reorder_point ? 'Critical' : 'Reorder', cols[5], y, { width: 60 });
     doc.moveDown(0.5);
   });
 }

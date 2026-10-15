@@ -38,6 +38,11 @@ const adminNav = [
       <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
     </svg>
   )},
+  { href: '/procurement', label: 'Procurement', icon: (
+    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+    </svg>
+  )},
 ];
 
 const adminOnly = [
@@ -140,6 +145,8 @@ export default function Layout({ children }) {
   const [allInventory, setAllInventory] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
   const [overdueReturns, setOverdueReturns] = useState([]);
+  const [notifs, setNotifs] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const searchInputRef = useRef(null);
   const searchDropdownRef = useRef(null);
   const notificationRef = useRef(null);
@@ -218,6 +225,15 @@ export default function Layout({ children }) {
           setNotificationCount(lowStock.length);
         }
 
+        try {
+          const nRes = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
+          if (nRes.ok) {
+            const nData = await nRes.json().catch(() => ({}));
+            setNotifs(Array.isArray(nData.notifications) ? nData.notifications : []);
+            setUnreadCount(Number(nData.unread_count) || 0);
+          }
+        } catch {}
+
         if (txRes.ok) {
           const txData = await txRes.json().catch(() => []);
           const transactions = Array.isArray(txData) ? txData : (txData.transactions || []);
@@ -240,8 +256,31 @@ export default function Layout({ children }) {
 
     function onInventoryUpdated() { fetchInventoryAndNotifications(); }
     window.addEventListener('inventory-updated', onInventoryUpdated);
-    return () => window.removeEventListener('inventory-updated', onInventoryUpdated);
+    const poll = setInterval(fetchInventoryAndNotifications, 30000);
+    return () => {
+      window.removeEventListener('inventory-updated', onInventoryUpdated);
+      clearInterval(poll);
+    };
   }, [user]);
+
+  const totalAlertCount = notificationCount + overdueReturns.length + unreadCount;
+
+  const handleNotifClick = async (n) => {
+    try {
+      const token = sessionStorage.getItem('token');
+      if (token && !n.is_read) {
+        await fetch('/api/notifications', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ notification_id: n.notification_id }),
+        });
+        setNotifs(prev => prev.map(x => x.notification_id === n.notification_id ? { ...x, is_read: true } : x));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+      if (n.link) router.push(n.link);
+      setShowNotificationDropdown(false);
+    } catch {}
+  };
 
   // Handle search results
   useEffect(() => {
@@ -528,8 +567,49 @@ export default function Layout({ children }) {
                 <div className="absolute top-full right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
                   <div className="p-4 border-b border-gray-100 sticky top-0 bg-white">
                     <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
-                    <p className="text-xs text-red-600">{notificationCount + overdueReturns.length} alert{notificationCount + overdueReturns.length === 1 ? '' : 's'}</p>
+                    <p className="text-xs text-red-600">{totalAlertCount} alert{totalAlertCount === 1 ? '' : 's'}</p>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const token = sessionStorage.getItem('token');
+                            await fetch('/api/notifications', {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                              body: JSON.stringify({ all: true }),
+                            });
+                            setNotifs(prev => prev.map(x => ({ ...x, is_read: true })));
+                            setUnreadCount(0);
+                          } catch {}
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 mt-1"
+                      >
+                        Mark all read
+                      </button>
+                    )}
                   </div>
+
+                  {/* Request / System Notifications */}
+                  {notifs.length > 0 && (
+                    <div className="border-b border-gray-100">
+                      <div className="px-4 py-3 bg-blue-50">
+                        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">🔔 REQUESTS & UPDATES ({notifs.length})</h4>
+                      </div>
+                      <div>
+                        {notifs.slice(0, 15).map((n) => (
+                          <div
+                            key={n.notification_id}
+                            onClick={() => handleNotifClick(n)}
+                            className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer ${n.is_read ? 'opacity-60' : ''}`}
+                          >
+                            <div className="text-xs font-medium text-gray-900">{n.title}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">{n.message}</div>
+                            <div className="text-xs text-gray-400 mt-1">{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Stock Alerts */}
                   {lowStockItems.length > 0 && (
@@ -570,7 +650,7 @@ export default function Layout({ children }) {
                     </div>
                   )}
 
-                  {lowStockItems.length === 0 && overdueReturns.length === 0 && (
+                  {lowStockItems.length === 0 && overdueReturns.length === 0 && notifs.length === 0 && (
                     <div className="px-4 py-8 text-center">
                       <p className="text-xs text-gray-500">No alerts or notifications</p>
                     </div>

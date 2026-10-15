@@ -1,5 +1,6 @@
 import { transaction } from '../../../lib/db.js';
 import { withAuth } from '../../../lib/rbac.js';
+import { createNotification, NOTIFICATION_TYPES } from '../../../lib/notifications.js';
 
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -41,9 +42,32 @@ async function handler(req, res) {
       );
 
       await client.query(`
-        INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
-        VALUES ($1,'CREATE','return_transactions',$2,$3)
-      `, [req.user.user_id, borrow_id, JSON.stringify({ borrow_id, item_id: current.item_id, quantity_returned: current.quantity_borrowed, condition_returned: condition })]);
+        INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values)
+        VALUES ($1, $2, 'CREATE', 'return_transactions', $3, NULL, $4)
+      `, [req.user.user_id, req.user.username || null, String(borrow_id), JSON.stringify({ borrow_id, item_id: current.item_id, quantity_returned: current.quantity_borrowed, condition_returned: condition, notes: notes || '' })]);
+
+      await client.query(`
+        INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values)
+        VALUES ($1, $2, 'UPDATE_STATUS', 'borrow_transactions', $3, $4, $5)
+      `, [
+        req.user.user_id,
+        req.user.username || null,
+        String(borrow_id),
+        JSON.stringify({ status: current.status, actual_return_date: current.actual_return_date }),
+        JSON.stringify({ status: 'Returned', actual_return_date: new Date().toISOString(), condition_returned: condition })
+      ]);
+
+      const itemName = await client.query('SELECT item_name, unit_of_measure FROM inventory_items WHERE item_id = $1', [current.item_id]);
+
+      await createNotification(client, {
+        type: NOTIFICATION_TYPES.RETURN_COMPLETED,
+        title: 'Item returned',
+        message: `${current.borrower_name || 'A borrower'} returned ${current.quantity_borrowed} ${itemName.rows[0]?.unit_of_measure || 'unit(s)'} of ${itemName.rows[0]?.item_name || 'an item'} (${condition}).`,
+        link: '/transactions',
+        referenceId: Number(borrow_id),
+        excludeUserId: req.user.user_id
+      });
+
 
       if (condition === 'Good') {
         await client.query(

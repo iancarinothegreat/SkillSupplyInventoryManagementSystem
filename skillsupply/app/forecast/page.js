@@ -144,6 +144,14 @@ export default function ForecastPage() {
     fetchAnalytics();
   }, [fetchForecasts, fetchAnalytics]);
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchForecasts();
+      fetchAnalytics();
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [fetchForecasts, fetchAnalytics]);
+
   const getRiskLevel = (item) => {
     const stock = Number(item.stock) || 0;
     const reorder = Number(item.reorder_point) || 0;

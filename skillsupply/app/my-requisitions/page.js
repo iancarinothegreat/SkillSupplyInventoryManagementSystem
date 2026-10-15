@@ -149,6 +149,11 @@ export default function MyRequisitionsPage() {
 
   const filtered = filterStatus === 'all' ? requisitions : requisitions.filter(r => r.status === filterStatus);
 
+  const selectedItem = inventory.find((i) => String(i.item_id) === String(form.item_id));
+  const requestedQty = Number(form.quantity) || 0;
+  const availableStock = selectedItem ? Number(selectedItem.quantity_on_hand) || 0 : null;
+  const overStock = selectedItem && requestedQty > availableStock;
+
   const counts = {
     Pending: requisitions.filter(r => r.status === 'Pending').length,
     Approved: requisitions.filter(r => r.status === 'Approved').length,
@@ -242,7 +247,14 @@ export default function MyRequisitionsPage() {
                       <span className={statusBadge(r.status)}>{r.status}</span>
                     </div>
                     <h3 className="text-sm font-semibold text-gray-900">{r.item_name}</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">Quantity: {r.quantity} • {r.purpose}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Requested Quantity: {r.quantity}{r.unit_of_measure ? ` ${r.unit_of_measure}` : ''}
+                      {' • Available Stock: '}{r.available_stock ?? '—'}
+                      {' • '}{r.purpose}
+                    </p>
+                    {r.quantity_approved !== null && typeof r.quantity_approved !== 'undefined' && Number(r.quantity_approved) !== Number(r.quantity) && (
+                      <p className="text-xs text-orange-600 mt-0.5 font-medium">Approved Quantity: {r.quantity_approved} (adjusted from {r.quantity})</p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
@@ -275,6 +287,9 @@ export default function MyRequisitionsPage() {
                   <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2">
                     <div className="w-2 h-2 bg-blue-400 rounded-full" />
                     <p className="text-xs text-blue-600">Item released — request completed</p>
+                    {r.mr_number && (
+                      <p className="text-xs text-gray-500 ml-auto">MR Receipt: <span className="font-semibold text-gray-700">{r.mr_number}</span></p>
+                    )}
                   </div>
                 )}
               </div>
@@ -305,6 +320,30 @@ export default function MyRequisitionsPage() {
                     <option key={item.item_id} value={item.item_id}>{item.item_name} ({item.category_name})</option>
                   ))}
                 </select>
+                {selectedItem && (
+                  <div className={`mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-3 py-2 text-xs ${overStock ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <span className="text-gray-500">Item:</span>
+                    <span className="font-semibold text-gray-800">{selectedItem.item_name}</span>
+                    <span className="text-gray-500">Available Stock:</span>
+                    <span className={`font-semibold ${overStock ? 'text-red-600' : 'text-gray-800'}`}>
+                      {availableStock} {selectedItem.unit_of_measure}
+                    </span>
+                    <span className="text-gray-500">Requested Quantity:</span>
+                    <span className={`font-semibold ${overStock ? 'text-red-600' : 'text-gray-800'}`}>
+                      {requestedQty || 0} {selectedItem.unit_of_measure}
+                    </span>
+                    {requestedQty > 0 && (
+                      <span className={`w-full ${overStock ? 'text-red-600' : 'text-green-600'}`}>
+                        {overStock
+                          ? `Exceeds available stock by ${requestedQty - availableStock} ${selectedItem.unit_of_measure}. Please reduce the quantity.`
+                          : `Within available stock (${availableStock - requestedQty} ${selectedItem.unit_of_measure} remaining after release).`}
+                      </span>
+                    )}
+                    {selectedItem.requires_mr ? (
+                      <span className="w-full text-blue-600">This item requires an MR (Memorandum Receipt) upon release.</span>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
@@ -328,7 +367,7 @@ export default function MyRequisitionsPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setShowModal(false); setEditingRequest(null); }} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">Cancel</button>
-                <button type="submit" disabled={submitting} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition">
+                <button type="submit" disabled={submitting || overStock} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition">
                   {submitting ? 'Saving...' : editingRequest ? 'Save Changes' : 'Submit Request'}
                 </button>
               </div>

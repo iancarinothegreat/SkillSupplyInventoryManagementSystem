@@ -4,6 +4,8 @@ import { withAuth } from '../../../lib/rbac.js';
 async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+
   try {
     const { from, to, window: windowMonths } = req.query;
 

@@ -5,14 +5,15 @@ import {
 } from '../../lib/utils.js';
 
 describe('Inventory utility functions', () => {
-  it('returns Out of Stock when quantity is zero', () => {
+  it('returns Critical when quantity is zero', () => {
     const result = getStockStatus({
       quantity: 0,
       reorder_point: 5,
       defective_quantity: 0
     });
 
-    expect(result.label).toBe('Out of Stock');
+    expect(result.label).toBe('Critical');
+    expect(result.pct).toBe(0);
   });
 
   it('returns Critical when quantity is at the reorder point', () => {

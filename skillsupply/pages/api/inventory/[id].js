@@ -1,5 +1,6 @@
 import { query } from '../../../lib/db.js';
 import { withAuth } from '../../../lib/rbac.js';
+import { parseMaxBorrowDays } from '../../../lib/utils.js';
 
 async function handler(req, res) {
   const { id } = req.query;
@@ -8,7 +9,7 @@ async function handler(req, res) {
     const {
       item_name, serial_number, category_id, division_id,
       unit_of_measure, quantity_on_hand,
-      reorder_level, defective_quantity, is_returnable, unit_cost, description, notes
+      reorder_level, defective_quantity, is_returnable, is_borrowable, maximum_borrow_days, requires_mr, unit_cost, description, notes
     } = req.body;
 
     try {
@@ -18,10 +19,11 @@ async function handler(req, res) {
         UPDATE inventory_items
         SET item_name=$1, serial_number=$2, category_id=$3, division_id=$4,
             unit_of_measure=$5, quantity_on_hand=$6,
-            reorder_level=$7, defective_quantity=$8, is_returnable=$9, unit_cost=$10, description=$11, notes=$12
-        WHERE item_id=$13
+            reorder_level=$7, defective_quantity=$8, is_returnable=$9, unit_cost=$10, description=$11, notes=$12,
+            is_borrowable=$13, maximum_borrow_days=$14, requires_mr=$15
+        WHERE item_id=$16
         RETURNING *
-      `, [item_name, serial_number || null, category_id, division_id, unit_of_measure, quantity_on_hand, reorder_level, defective_quantity ?? 0, is_returnable ?? false, unit_cost, description || null, notes || null, id]);
+      `, [item_name, serial_number || null, category_id, division_id, unit_of_measure, quantity_on_hand, reorder_level, defective_quantity ?? 0, is_returnable ?? false, unit_cost, description || null, notes || null, is_borrowable ?? true, parseMaxBorrowDays(maximum_borrow_days), requires_mr ?? false, id]);
 
       await query(`
         INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)

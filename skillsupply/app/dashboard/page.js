@@ -96,8 +96,10 @@ export default function DashboardPage() {
   const [dateTo, setDateTo] = useState('');
   const [filterDivision, setFilterDivision] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   const [divisions, setDivisions] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [requestForecast, setRequestForecast] = useState([]);
 
   // Data state
   const [kpis, setKpis] = useState({
@@ -145,10 +147,13 @@ export default function DashboardPage() {
       if (dateTo) params.append('to', dateTo);
       if (filterDivision) params.append('division_id', filterDivision);
       if (filterCategory) params.append('category_id', filterCategory);
+      if (filterStatus) params.append('status', filterStatus);
 
-      const [analyticsRes, txRes] = await Promise.all([
-        fetch(`/api/dashboard/analytics?${params.toString()}`, { headers }),
-        fetch('/api/transactions', { headers })
+      const fetchOpts = { headers, cache: 'no-store' };
+      const [analyticsRes, txRes, forecastRes] = await Promise.all([
+        fetch(`/api/dashboard/analytics?${params.toString()}`, fetchOpts),
+        fetch('/api/transactions', fetchOpts),
+        fetch(`/api/dashboard/request-forecast?${params.toString()}`, fetchOpts)
       ]);
 
       const safeJson = async (res) => {
@@ -158,6 +163,7 @@ export default function DashboardPage() {
 
       const analytics = await safeJson(analyticsRes);
       const txData = await safeJson(txRes);
+      const forecastData = await safeJson(forecastRes);
 
       if (analytics.kpis) {
         setKpis({
@@ -286,14 +292,20 @@ export default function DashboardPage() {
       if (analytics.stockStatus) {
         const ss = analytics.stockStatus;
         setStockStatusChart({
-          labels: ['Out of Stock', 'Low Stock', 'In Stock'],
+          labels: ['Critical', 'Low', 'Sufficient'],
           datasets: [{
-            data: [ss.outOfStock, ss.lowStock, ss.inStock],
+            data: [
+              Number(ss.critical ?? ss.outOfStock ?? 0),
+              Number(ss.low ?? ss.lowStock ?? 0),
+              Number(ss.sufficient ?? ss.inStock ?? 0)
+            ],
             backgroundColor: [COLORS.red, COLORS.yellow, COLORS.green],
             borderWidth: 0
           }]
         });
       }
+
+      setRequestForecast(forecastData.rows || forecastData || []);
 
       // Requisitions
       if (analytics.requisitions && analytics.requisitions.length > 0) {
@@ -325,13 +337,32 @@ export default function DashboardPage() {
     fetchDashboard();
     const interval = setInterval(() => fetchDashboard({ silent: true }), 30000);
     return () => clearInterval(interval);
-  }, [dateFrom, dateTo, filterDivision, filterCategory]);
+  }, [dateFrom, dateTo, filterDivision, filterCategory, filterStatus]);
 
   const clearFilters = () => {
     setDateFrom('');
     setDateTo('');
     setFilterDivision('');
     setFilterCategory('');
+    setFilterStatus('');
+  };
+
+  const requestForecastChart = {
+    labels: requestForecast.map(d => d.division),
+    datasets: [
+      {
+        label: 'Historical Requests (avg/month)',
+        data: requestForecast.map(d => Number(d.historical_avg || 0)),
+        backgroundColor: COLORS.blue,
+        borderRadius: 4
+      },
+      {
+        label: 'Predicted Max Requests (next month)',
+        data: requestForecast.map(d => Number(d.predicted_max || 0)),
+        backgroundColor: COLORS.orange,
+        borderRadius: 4
+      }
+    ]
   };
 
   const chartOptions = {
@@ -358,7 +389,7 @@ export default function DashboardPage() {
 
   const kpiCards = [
     { label: 'TOTAL ITEMS', value: loading ? '...' : kpis.totalItems, color: 'text-blue-600' },
-    { label: 'LOW STOCK', value: loading ? '...' : kpis.lowStock, color: 'text-yellow-600' },
+    { label: 'CRITICAL STOCK', value: loading ? '...' : kpis.lowStock, color: 'text-red-600' },
     { label: 'ITEMS ON LOAN', value: loading ? '...' : kpis.itemsOnLoan, color: 'text-orange-600' },
     { label: 'TOTAL TRANSACTIONS', value: loading ? '...' : kpis.totalTransactions, color: 'text-purple-600' },
     { label: 'RETURN RATE', value: loading ? '...' : `${kpis.returnRate}%`, color: 'text-green-600' },
@@ -377,7 +408,7 @@ export default function DashboardPage() {
           </svg>
           <span className="text-sm font-semibold text-gray-700">Filters</span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
             <label className="text-xs text-gray-500 mb-1 block">From Date</label>
             <input
@@ -422,6 +453,23 @@ export default function DashboardPage() {
               ))}
             </select>
           </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Transaction Status</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="Borrowed">Borrowed</option>
+              <option value="Returned">Returned</option>
+              <option value="Overdue">Overdue</option>
+              <option value="Approved">Approved</option>
+              <option value="Released">Released</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
           <div className="flex items-end">
             <button
               onClick={clearFilters}
@@ -431,6 +479,9 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+        <p className="text-xs text-gray-400 mt-3">
+          All charts below (trend, consumption, requisitions, stock status and category) use these filters.
+        </p>
       </div>
 
       {/* KPI Cards */}
@@ -488,7 +539,10 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         {/* Monthly Trend */}
         <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Monthly Consumption Trend by Division (6 months)</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">
+            Monthly Consumption Trend by Division
+            {dateFrom || dateTo ? ` (${dateFrom || 'start'} to ${dateTo || 'today'})` : ' (last 6 months)'}
+          </h2>
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
@@ -578,6 +632,47 @@ export default function DashboardPage() {
                 }
               }}
             />
+          </div>
+        )}
+      </div>
+
+      {/* Predicted Requests per Division */}
+      <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-1">Predicted Maximum Requests per Division</h2>
+        <p className="text-xs text-gray-400 mb-4">
+          Estimated request volume for the next month based on the last 6 months of requisitions and borrow requests.
+        </p>
+        {!hasLoaded ? (
+          <SkeletonChart className="border-0 p-0 shadow-none" />
+        ) : requestForecast.length === 0 ? (
+          <p className="text-sm text-gray-400 py-8 text-center">No request history yet</p>
+        ) : (
+          <div style={{ height: 300 }}>
+            <Bar data={requestForecastChart} options={chartOptions} />
+          </div>
+        )}
+        {requestForecast.length > 0 && (
+          <div className="overflow-x-auto mt-4">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                  <th className="py-2 pr-4">Division</th>
+                  <th className="py-2 pr-4">Historical Requests (6 mo.)</th>
+                  <th className="py-2 pr-4">Average / Month</th>
+                  <th className="py-2 pr-4">Predicted Max (next month)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {requestForecast.map((row) => (
+                  <tr key={row.division}>
+                    <td className="py-2 pr-4 text-gray-700">{row.division}</td>
+                    <td className="py-2 pr-4 text-gray-600">{row.total_requests}</td>
+                    <td className="py-2 pr-4 text-gray-600">{Number(row.historical_avg || 0).toFixed(1)}</td>
+                    <td className="py-2 pr-4 font-semibold text-orange-600">{row.predicted_max}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

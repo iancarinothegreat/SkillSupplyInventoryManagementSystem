@@ -33,7 +33,7 @@ async function handler(req, res) {
         'Unit': r.unit || '—',
         'Reorder Point': r.reorder_point,
         'Unit Price': r.unit_price || 0,
-        'Status': r.quantity === 0 ? 'Out of Stock' : r.quantity <= r.reorder_point ? 'Low Stock' : 'In Stock',
+        'Status': r.quantity <= r.reorder_point ? 'Critical' : r.quantity <= r.reorder_point * 1.5 ? 'Low Stock' : 'In Stock',
       }));
       const ws = xlsx.utils.json_to_sheet(data);
       xlsx.utils.book_append_sheet(workbook, ws, 'Inventory');
@@ -83,7 +83,7 @@ async function handler(req, res) {
         'Unit': r.unit || '—',
         'Reorder Point': r.reorder_point,
         'Deficit': Math.max(0, r.reorder_point - r.quantity),
-        'Status': r.quantity === 0 ? 'Out of Stock' : 'Reorder',
+        'Status': r.quantity <= r.reorder_point ? 'Critical' : 'Reorder',
       }));
       const ws = xlsx.utils.json_to_sheet(data);
       xlsx.utils.book_append_sheet(workbook, ws, 'Low Stock');
@@ -148,7 +148,7 @@ async function handler(req, res) {
       const summaryData = [
         { 'Metric': 'Total Items', 'Value': inv.total_items },
         { 'Metric': 'Total Stock Units', 'Value': inv.total_stock || 0 },
-        { 'Metric': 'Out of Stock', 'Value': inv.out_of_stock },
+        { 'Metric': 'Critical Stock', 'Value': inv.out_of_stock },
         { 'Metric': 'Low Stock', 'Value': inv.low_stock },
         { 'Metric': 'Estimated Total Value (₱)', 'Value': parseFloat(inv.total_value || 0).toFixed(2) },
         { 'Metric': '', 'Value': '' },

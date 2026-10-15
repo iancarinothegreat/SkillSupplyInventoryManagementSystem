@@ -3,9 +3,17 @@ import { useState, useEffect, useCallback } from 'react';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
 
-const TABLE_HEADERS = ['ID', 'Item', 'Quantity', 'Division', 'Borrow Date', 'Expected Return', 'Status'];
+const TABLE_HEADERS = ['ID', 'Item', 'Quantity', 'Division', 'Borrow Date', 'Expected Return', 'Status', 'Action'];
 
 const isBorrowedStatus = (status) => ['Borrowed', 'Issued', 'Active'].includes(status);
+
+const datePlusDays = (days) => {
+  const base = new Date();
+  const utc = Date.UTC(base.getFullYear(), base.getMonth(), base.getDate());
+  return new Date(utc + days * 86400000).toISOString().slice(0, 10);
+};
+
+const maxDaysFor = (item) => (item && Number(item.maximum_borrow_days) > 0 ? Number(item.maximum_borrow_days) : null);
 
 const statusBadge = (status) => {
   const map = {
@@ -37,8 +45,12 @@ export default function BorrowPage() {
     borrower_name: '',
     division_id: '',
     purpose: '',
+    mr_number: '',
   };
   const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchTransactions = useCallback(async () => {
     try {
@@ -143,6 +155,8 @@ export default function BorrowPage() {
   const handleOpenModal = () => {
     setError('');
     setSuccess('');
+    setEditingId(null);
+    setForm(emptyForm);
     fetchMe();
     fetchInventory();
     fetchTransactions();
@@ -155,15 +169,18 @@ export default function BorrowPage() {
     setError('');
     try {
       const token = sessionStorage.getItem('token');
-      const res = await fetch('/api/transactions/borrow', {
-        method: 'POST',
+      const res = await fetch(editingId ? `/api/transactions/${editingId}` : '/api/transactions/borrow', {
+        method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess('Borrow request submitted for review. Inventory will be deducted after approval.');
+        setSuccess(editingId
+          ? 'Borrow request updated successfully.'
+          : 'Borrow request submitted for review. Inventory will be deducted after approval.');
         setShowModal(false);
+        setEditingId(null);
         setForm(emptyForm);
         fetchMe();
         fetchTransactions();
@@ -178,11 +195,66 @@ export default function BorrowPage() {
     }
   };
 
+  const openEditModal = (t) => {
+    setError('');
+    setSuccess('');
+    setEditingId(t.borrow_id);
+    setForm({
+      item_id: String(t.item_id ?? ''),
+      quantity_borrowed: String(t.quantity_borrowed ?? ''),
+      expected_return_date: t.expected_return_date ? String(t.expected_return_date).slice(0, 10) : '',
+      borrower_name: t.borrower_name || '',
+      division_id: t.division_id ? String(t.division_id) : '',
+      purpose: t.purpose || '',
+      mr_number: t.mr_number || '',
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const token = sessionStorage.getItem('token');
+      const res = await fetch(`/api/transactions/${deleteTarget.borrow_id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to delete borrow request.');
+        return;
+      }
+      setSuccess('Borrow request deleted.');
+      setDeleteTarget(null);
+      fetchTransactions();
+      fetchInventory();
+    } catch (err) {
+      setError('Server error.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const activeCount = transactions.filter((t) => isBorrowedStatus(t.status)).length;
   const pendingCount = transactions.filter((t) => t.status === 'Pending').length;
   const overdueCount = transactions.filter((t) => t.status === 'Overdue').length;
   const returnedCount = transactions.filter((t) => t.status === 'Returned').length;
-  const borrowableItems = inventory.filter((i) => (i.quantity_on_hand ?? 0) > 0 && i.is_returnable);
+  const borrowableItems = inventory.filter(
+    (i) => (i.quantity_on_hand ?? 0) > 0 && i.is_returnable !== false && (i.is_borrowable ?? true)
+  );
+  const selectedItem = inventory.find((i) => String(i.item_id) === String(form.item_id)) || null;
+  const selectedMaxDays = maxDaysFor(selectedItem);
+  const selectedAvailable = selectedItem ? Number(selectedItem.quantity_on_hand) || 0 : null;
+  const requestedQty = Number(form.quantity_borrowed) || 0;
+  const overStock = selectedItem && requestedQty > selectedAvailable;
+  const returnDateMax = selectedMaxDays ? datePlusDays(selectedMaxDays) : '';
+  const exceedsMaxDays = Boolean(
+    selectedMaxDays &&
+    form.expected_return_date &&
+    form.expected_return_date > returnDateMax
+  );
 
   const filtered = transactions.filter((t) => {
     if (filterStatus === 'all') return true;
@@ -259,7 +331,7 @@ export default function BorrowPage() {
               </thead>
               <tbody>
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <SkeletonTableRow key={i} widths={['w-10', 'w-28', 'w-12', 'w-24', 'w-24', 'w-24', 'w-16']} className="border-b border-gray-50" />
+                  <SkeletonTableRow key={i} widths={['w-10', 'w-28', 'w-12', 'w-24', 'w-24', 'w-24', 'w-16', 'w-16']} className="border-b border-gray-50" />
                 ))}
               </tbody>
             </table>
@@ -288,7 +360,12 @@ export default function BorrowPage() {
                 {filtered.map((t, idx) => (
                   <tr key={t.borrow_id ?? `tx-${idx}`} className="hover:bg-gray-50 transition">
                     <td className="px-6 py-4 text-sm text-gray-500">#{t.borrow_id}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{t.item_name}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                      {t.item_name}
+                      {t.mr_number && (
+                        <span className="block text-xs font-normal text-blue-600">MR: {t.mr_number}</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{t.quantity_borrowed}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{t.division_name || '—'}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">
@@ -300,6 +377,26 @@ export default function BorrowPage() {
                         : '—'}
                     </td>
                     <td className="px-6 py-4"><span className={statusBadge(t.status)}>{t.status}</span></td>
+                    <td className="px-6 py-4">
+                      {t.status === 'Pending' ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openEditModal(t)}
+                            className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 font-medium transition"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => { setDeleteTarget(t); setError(''); }}
+                            className="text-xs px-3 py-1.5 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 font-medium transition"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -313,7 +410,7 @@ export default function BorrowPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Borrow Item</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{editingId ? 'Edit Borrow Request' : 'Borrow Item'}</h2>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -327,18 +424,60 @@ export default function BorrowPage() {
                 <select
                   required
                   value={form.item_id}
-                  onChange={(e) => setForm({ ...form, item_id: e.target.value })}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const item = inventory.find((i) => String(i.item_id) === String(id));
+                    const max = maxDaysFor(item);
+                    setForm({
+                      ...form,
+                      item_id: id,
+                      expected_return_date: datePlusDays(max ?? 7),
+                      mr_number: '',
+                    });
+                  }}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select item...</option>
                   {borrowableItems.map((item) => (
                     <option key={item.item_id} value={item.item_id}>
-                      {item.item_name} (Stock: {item.quantity_on_hand})
+                      {item.item_name}
                     </option>
                   ))}
                 </select>
                 {borrowableItems.length === 0 && (
                   <p className="mt-1 text-xs text-gray-500">No returnable items available for borrowing.</p>
+                )}
+                {selectedItem && (
+                  <div className={`mt-2 rounded-lg border px-3 py-2 text-xs space-y-1 ${overStock ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      <span className="text-gray-500">Item:</span>
+                      <span className="font-semibold text-gray-800">{selectedItem.item_name}</span>
+                      <span className="text-gray-500">Available Stock:</span>
+                      <span className={`font-semibold ${overStock ? 'text-red-600' : 'text-gray-800'}`}>
+                        {selectedAvailable} {selectedItem.unit_of_measure}
+                      </span>
+                      <span className="text-gray-500">Quantity to Borrow:</span>
+                      <span className={`font-semibold ${overStock ? 'text-red-600' : 'text-gray-800'}`}>
+                        {requestedQty || 0} {selectedItem.unit_of_measure}
+                      </span>
+                    </div>
+                    {requestedQty > 0 && (
+                      <p className={overStock ? 'text-red-600' : 'text-green-600'}>
+                        {overStock
+                          ? `Exceeds available stock by ${requestedQty - selectedAvailable} ${selectedItem.unit_of_measure}.`
+                          : 'Within available stock.'}
+                      </p>
+                    )}
+                    <p className="text-gray-600">
+                      Classification: {(selectedItem.is_returnable !== false) ? 'Returnable' : 'Non-returnable'}
+                      {' · '}{(selectedItem.is_borrowable ?? true) ? 'Borrowable' : 'Not borrowable'}
+                      {' · '}{selectedMaxDays ? `Maximum of ${selectedMaxDays} day(s) to borrow` : 'No borrowing period limit'}
+                      {selectedItem.requires_mr ? ' · Requires MR Receipt' : ''}
+                    </p>
+                    {selectedItem.requires_mr && (
+                      <p className="text-blue-600">An MR (Memorandum Receipt) number is required for this item.</p>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -355,12 +494,33 @@ export default function BorrowPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Expected Return *</label>
                   <input
                     type="date" required
+                    min={datePlusDays(0)}
+                    max={returnDateMax || undefined}
                     value={form.expected_return_date}
                     onChange={(e) => setForm({ ...form, expected_return_date: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  <p className={`mt-1 text-xs ${exceedsMaxDays ? 'text-red-600' : 'text-gray-400'}`}>
+                    {selectedMaxDays
+                      ? (exceedsMaxDays
+                        ? `Exceeds the ${selectedMaxDays}-day borrowing limit.`
+                        : `Maximum ${selectedMaxDays} day(s) — on or before ${returnDateMax}`)
+                      : 'Default 7 days if left unchanged'}
+                  </p>
                 </div>
               </div>
+              {selectedItem?.requires_mr && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">MR (Memorandum Receipt) Number *</label>
+                  <input
+                    type="text" required
+                    value={form.mr_number}
+                    onChange={(e) => setForm({ ...form, mr_number: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. MR-2026-001"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Borrower Name *</label>
                 <input
@@ -396,14 +556,50 @@ export default function BorrowPage() {
                 />
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">
+                <button type="button" onClick={() => { setShowModal(false); setEditingId(null); }} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">
                   Cancel
                 </button>
-                <button type="submit" disabled={submitting} className="flex-1 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 disabled:opacity-50 transition">
-                  {submitting ? 'Borrowing...' : 'Borrow Item'}
+                <button type="submit" disabled={submitting || overStock || exceedsMaxDays} className="flex-1 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 disabled:opacity-50 transition">
+                  {submitting ? 'Saving...' : editingId ? 'Save Changes' : 'Borrow Item'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold text-gray-900">Delete Borrow Request</h2>
+              <p className="text-xs text-gray-400 mt-0.5">This action cannot be undone</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Delete borrow request <span className="font-semibold text-gray-900">#{deleteTarget.borrow_id}</span> for{' '}
+                <span className="font-semibold text-gray-900">{deleteTarget.item_name}</span>?
+              </p>
+              {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setDeleteTarget(null); setError(''); }}
+                  className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition"
+                >
+                  {deleting ? 'Deleting...' : 'Delete Request'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
