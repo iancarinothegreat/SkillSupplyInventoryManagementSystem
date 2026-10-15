@@ -302,6 +302,7 @@ export default function DashboardPage() {
           datasets: [
             { label: 'Pending', data: analytics.requisitions.map(d => d.pending), backgroundColor: '#6b7280', borderRadius: 4 },
             { label: 'Approved', data: analytics.requisitions.map(d => d.approved), backgroundColor: COLORS.green, borderRadius: 4 },
+            { label: 'Released', data: analytics.requisitions.map(d => d.released), backgroundColor: COLORS.blue, borderRadius: 4 },
             { label: 'Rejected', data: analytics.requisitions.map(d => d.rejected), backgroundColor: COLORS.red, borderRadius: 4 }
           ]
         });
