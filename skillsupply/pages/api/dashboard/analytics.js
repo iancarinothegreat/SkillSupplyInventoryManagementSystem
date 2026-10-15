@@ -180,6 +180,7 @@ async function handler(req, res) {
         SELECT d.division_name,
           COALESCE(SUM(CASE WHEN r.status = 'Pending' THEN 1 ELSE 0 END), 0) AS pending,
           COALESCE(SUM(CASE WHEN r.status = 'Approved' THEN 1 ELSE 0 END), 0) AS approved,
+          COALESCE(SUM(CASE WHEN r.status = 'Released' THEN 1 ELSE 0 END), 0) AS released,
           COALESCE(SUM(CASE WHEN r.status = 'Rejected' THEN 1 ELSE 0 END), 0) AS rejected
         FROM divisions d
         LEFT JOIN requisitions r ON r.division_id = d.division_id
@@ -244,6 +245,7 @@ async function handler(req, res) {
         division: r.division_name,
         pending: parseInt(r.pending, 10),
         approved: parseInt(r.approved, 10),
+        released: parseInt(r.released, 10),
         rejected: parseInt(r.rejected, 10)
       }))
     });
