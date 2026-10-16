@@ -193,6 +193,20 @@ export default function Layout({ children }) {
   useEffect(() => {
     async function fetchInventoryAndNotifications() {
       if (!user) return;
+
+      const token = sessionStorage.getItem('token');
+      if (!token) return;
+
+      // Notifications are for every role (staff get status updates on their requests)
+      try {
+        const nRes = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
+        if (nRes.ok) {
+          const nData = await nRes.json().catch(() => ({}));
+          setNotifs(Array.isArray(nData.notifications) ? nData.notifications : []);
+          setUnreadCount(Number(nData.unread_count) || 0);
+        }
+      } catch {}
+
       if (Number(user.hierarchy_level) < 2) {
         setAllInventory([]);
         setLowStockItems([]);
@@ -202,9 +216,6 @@ export default function Layout({ children }) {
       }
 
       try {
-        const token = sessionStorage.getItem('token');
-        if (!token) return;
-
         const [invRes, txRes] = await Promise.all([
           fetch('/api/inventory', { headers: { Authorization: `Bearer ${token}` } }),
           fetch('/api/transactions', { headers: { Authorization: `Bearer ${token}` } }),
@@ -224,15 +235,6 @@ export default function Layout({ children }) {
           setLowStockItems(lowStock);
           setNotificationCount(lowStock.length);
         }
-
-        try {
-          const nRes = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
-          if (nRes.ok) {
-            const nData = await nRes.json().catch(() => ({}));
-            setNotifs(Array.isArray(nData.notifications) ? nData.notifications : []);
-            setUnreadCount(Number(nData.unread_count) || 0);
-          }
-        } catch {}
 
         if (txRes.ok) {
           const txData = await txRes.json().catch(() => []);
@@ -504,9 +506,9 @@ export default function Layout({ children }) {
           <h1 className="text-sm font-semibold text-gray-800">
             {allNav.find(n => n.href === pathname)?.label || 'SkillSupply'}
           </h1>
-          {canViewHeaderTools && (
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
               {/* Search Dropdown */}
+              {canViewHeaderTools && (
               <div className="relative" ref={searchDropdownRef}>
                 <input
                   ref={searchInputRef}
@@ -544,6 +546,7 @@ export default function Layout({ children }) {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Notification Bell with Dropdown */}
               <div className="relative" ref={notificationRef}>
@@ -556,9 +559,9 @@ export default function Layout({ children }) {
                   <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
                   </svg>
-                  {notificationCount > 0 && (
+                  {notificationCount + unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-medium leading-none text-white bg-red-600 rounded-full border border-white">
-                      {notificationCount > 99 ? '99+' : notificationCount}
+                      {notificationCount + unreadCount > 99 ? '99+' : notificationCount + unreadCount}
                     </span>
                   )}
                 </button>
@@ -593,7 +596,12 @@ export default function Layout({ children }) {
                   {notifs.length > 0 && (
                     <div className="border-b border-gray-100">
                       <div className="px-4 py-3 bg-blue-50">
-                        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">🔔 REQUESTS & UPDATES ({notifs.length})</h4>
+                        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                          </svg>
+                          REQUESTS & UPDATES ({notifs.length})
+                        </h4>
                       </div>
                       <div>
                         {notifs.slice(0, 15).map((n) => (
@@ -615,7 +623,12 @@ export default function Layout({ children }) {
                   {lowStockItems.length > 0 && (
                     <div className="border-b border-gray-100">
                       <div className="px-4 py-3 bg-yellow-50 sticky top-12">
-                        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">⚠️ STOCK ALERTS ({lowStockItems.length})</h4>
+                        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                          </svg>
+                          STOCK ALERTS ({lowStockItems.length})
+                        </h4>
                       </div>
                       <div>
                         {lowStockItems.map((item) => (
@@ -636,7 +649,12 @@ export default function Layout({ children }) {
                   {overdueReturns.length > 0 && (
                     <div>
                       <div className="px-4 py-3 bg-red-50 sticky top-12">
-                        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">🔴 OVERDUE RETURNS ({overdueReturns.length})</h4>
+                        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          OVERDUE RETURNS ({overdueReturns.length})
+                        </h4>
                       </div>
                       <div>
                         {overdueReturns.map((tx) => (
@@ -659,7 +677,6 @@ export default function Layout({ children }) {
                 )}
               </div>
             </div>
-          )}
         </header>
         <main className="flex-1 overflow-y-auto p-6">
           {children}

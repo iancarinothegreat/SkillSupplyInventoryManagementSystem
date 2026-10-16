@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
@@ -37,6 +37,8 @@ export default function TransactionsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All Status');
   const searchParams = useSearchParams();
+  const refId = searchParams?.get('ref');
+  const openedRef = useRef(null);
 
   const [borrowForm, setBorrowForm] = useState({
     item_id: '',
@@ -140,6 +142,18 @@ export default function TransactionsPage() {
     const querySearch = searchParams?.get('search') || '';
     setSearchQuery(querySearch);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!refId || openedRef.current === refId) return;
+    const t = transactions.find((x) => String(x.borrow_id) === String(refId));
+    if (t && !loading) {
+      openedRef.current = refId;
+      setFilterStatus('All Status');
+      setSelectedTx(t);
+      setShowReviewModal(true);
+      setError('');
+    }
+  }, [refId, transactions, loading]);
 
   useEffect(() => {
     function onGlobalSearch(e) {

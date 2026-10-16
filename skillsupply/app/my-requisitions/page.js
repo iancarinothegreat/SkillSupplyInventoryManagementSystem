@@ -1,10 +1,14 @@
   'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonCard } from '../../components/Skeleton';
 import { broadcastRequisitionUpdate } from '../../lib/events';
 
 export default function MyRequisitionsPage() {
+  const searchParams = useSearchParams();
+  const refId = searchParams?.get('ref');
+  const openedRef = useRef(null);
   const [requisitions, setRequisitions] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,6 +19,7 @@ export default function MyRequisitionsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [highlightId, setHighlightId] = useState(null);
 
   const [form, setForm] = useState({
     item_id: '',
@@ -55,6 +60,19 @@ export default function MyRequisitionsPage() {
     fetchMyRequisitions();
     fetchInventory();
   }, [fetchMyRequisitions, fetchInventory]);
+
+  useEffect(() => {
+    if (!refId || openedRef.current === refId) return;
+    const r = requisitions.find((x) => String(x.id) === String(refId));
+    if (r && !loading) {
+      openedRef.current = refId;
+      setFilterStatus('all');
+      setHighlightId(r.id);
+      requestAnimationFrame(() => {
+        document.getElementById(`myreq-${r.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+  }, [refId, requisitions, loading]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -239,7 +257,11 @@ export default function MyRequisitionsPage() {
         ) : (
           <div className="space-y-3">
             {filtered.map((r) => (
-              <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 transition">
+              <div
+                key={r.id}
+                id={`myreq-${r.id}`}
+                className={`bg-white border rounded-xl p-5 transition ${highlightId === r.id ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-300'}`}
+              >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">

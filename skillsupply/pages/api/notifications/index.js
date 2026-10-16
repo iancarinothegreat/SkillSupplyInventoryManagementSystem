@@ -22,10 +22,13 @@ async function handler(req, res) {
       );
 
       return res.status(200).json({
-        notifications: rows.rows.map((row) => ({
-          ...row,
-          link: row.link || NOTIFICATION_LINKS[row.type] || null
-        })),
+        notifications: rows.rows.map((row) => {
+          const base = row.link || NOTIFICATION_LINKS[row.type] || null;
+          return {
+            ...row,
+            link: base && row.reference_id ? `${base}?ref=${row.reference_id}` : base
+          };
+        }),
         unread_count: unread.rows[0].count
       });
     } catch (err) {

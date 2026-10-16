@@ -1,10 +1,14 @@
   'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
 import { broadcastRequisitionUpdate } from '../../lib/events';
 
 export default function RequisitionsPage() {
+  const searchParams = useSearchParams();
+  const refId = searchParams?.get('ref');
+  const openedRef = useRef(null);
   const [requisitions, setRequisitions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
@@ -52,6 +56,15 @@ export default function RequisitionsPage() {
   useEffect(() => {
     fetchRequisitions();
   }, [fetchRequisitions]);
+
+  useEffect(() => {
+    if (!refId || openedRef.current === refId) return;
+    const r = requisitions.find((x) => String(x.id) === String(refId));
+    if (r) {
+      openedRef.current = refId;
+      openReview(r);
+    }
+  }, [refId, requisitions]);
 
   useEffect(() => {
     const onVisible = () => {

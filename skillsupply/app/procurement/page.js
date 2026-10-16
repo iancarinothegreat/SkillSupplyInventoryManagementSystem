@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
 
@@ -14,6 +15,9 @@ const STATUS_STYLES = {
 const TABLE_HEADERS = ['ID', 'Division', 'Items', 'Supplier', 'Status', 'Date', 'Action'];
 
 export default function ProcurementPage() {
+  const searchParams = useSearchParams();
+  const refId = searchParams?.get('ref');
+  const openedRef = useRef(null);
   const [requests, setRequests] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [divisions, setDivisions] = useState([]);
@@ -124,6 +128,16 @@ export default function ProcurementPage() {
     setError('');
     setSuccess('');
   };
+
+  useEffect(() => {
+    if (!refId || openedRef.current === refId) return;
+    const r = requests.find((x) => String(x.procurement_id) === String(refId));
+    if (r && !loading) {
+      openedRef.current = refId;
+      setFilterStatus('all');
+      openReview(r);
+    }
+  }, [refId, requests, loading]);
 
   const handleStatus = async (id, status, extra = {}) => {
     setSubmitting(true);

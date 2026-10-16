@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
 
@@ -28,6 +29,9 @@ const statusBadge = (status) => {
 };
 
 export default function BorrowPage() {
+  const searchParams = useSearchParams();
+  const refId = searchParams?.get('ref');
+  const openedRef = useRef(null);
   const [transactions, setTransactions] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [divisions, setDivisions] = useState([]);
@@ -37,6 +41,7 @@ export default function BorrowPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [highlightId, setHighlightId] = useState(null);
 
   const emptyForm = {
     item_id: '',
@@ -118,6 +123,19 @@ export default function BorrowPage() {
     fetchDivisions();
     fetchMe();
   }, [fetchTransactions, fetchInventory, fetchDivisions, fetchMe]);
+
+  useEffect(() => {
+    if (!refId || openedRef.current === refId) return;
+    const t = transactions.find((x) => String(x.borrow_id) === String(refId));
+    if (t && !loading) {
+      openedRef.current = refId;
+      setFilterStatus('all');
+      setHighlightId(t.borrow_id);
+      requestAnimationFrame(() => {
+        document.getElementById(`borrow-${t.borrow_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+  }, [refId, transactions, loading]);
 
   useEffect(() => {
     const refresh = () => {
@@ -358,7 +376,11 @@ export default function BorrowPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((t, idx) => (
-                  <tr key={t.borrow_id ?? `tx-${idx}`} className="hover:bg-gray-50 transition">
+                  <tr
+                    key={t.borrow_id ?? `tx-${idx}`}
+                    id={`borrow-${t.borrow_id ?? idx}`}
+                    className={`transition ${highlightId === t.borrow_id ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : 'hover:bg-gray-50'}`}
+                  >
                     <td className="px-6 py-4 text-sm text-gray-500">#{t.borrow_id}</td>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
                       {t.item_name}
