@@ -141,7 +141,7 @@ async function handler(req, res) {
         const item = itemDetails.rows[0] || {};
 
         await client.query(
-          'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6)',
+          'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6,$7)',
           [
             req.user.user_id,
             req.user.username || null,

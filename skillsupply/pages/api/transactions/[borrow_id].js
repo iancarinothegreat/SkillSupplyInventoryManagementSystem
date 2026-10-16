@@ -176,7 +176,7 @@ async function handleStatusChange(req, res, id) {
     );
 
     await client.query(
-      'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6)',
+      'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6,$7)',
       [
         req.user.user_id,
         req.user.username || null,
@@ -308,7 +308,7 @@ async function handleFieldEdit(req, res, id) {
     const updated = await client.query('SELECT * FROM borrow_transactions WHERE borrow_id=$1', [id]);
 
     await client.query(
-      'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6)',
+      'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6,$7)',
       [
         req.user.user_id,
         req.user.username || null,
@@ -375,16 +375,10 @@ async function handleDelete(req, res, id) {
       return res.status(409).json({ error: 'Only pending borrow requests can be deleted' });
     }
 
-    const itemResult = await client.query(
-      'SELECT item_name, unit_of_measure FROM inventory_items WHERE item_id=$1',
-      [current.item_id]
-    );
-    const item = itemResult.rows[0] || {};
-
     await client.query('DELETE FROM borrow_transactions WHERE borrow_id=$1', [id]);
 
     await client.query(
-      'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6)',
+      'INSERT INTO audit_log (user_id, username, action, table_name, record_id, old_values, new_values) VALUES ($1,$2,$3,$4,$5,$6,$7)',
       [
         req.user.user_id,
         req.user.username || null,
@@ -396,14 +390,10 @@ async function handleDelete(req, res, id) {
       ]
     );
 
-    await createNotification(client, {
-      type: NOTIFICATION_TYPES.BORROW_DELETED,
-      title: 'Borrow request deleted',
-      message: `${req.user.full_name || req.user.username} deleted borrow request #${id} — ${current.quantity_borrowed} ${item.unit_of_measure || 'unit(s)'} of ${item.item_name || 'item'}.`,
-      link: '/transactions',
-      referenceId: id,
-      excludeUserId: req.user.user_id
-    });
+    await client.query(
+      'DELETE FROM notifications WHERE reference_id = $1 AND (type LIKE \'BORROW_%\' OR type LIKE \'RETURN_%\')',
+      [id]
+    );
 
     await client.query('COMMIT');
     return res.status(200).json({ message: 'Borrow request deleted', borrow_id: id });

@@ -374,14 +374,10 @@ async function handler(req, res) {
           JSON.stringify(previous)
         ]);
 
-        await createNotification(client, {
-          type: NOTIFICATION_TYPES.REQUISITION_DELETED,
-          title: 'Requisition deleted',
-          message: `${req.user.full_name || req.user.username} deleted pending requisition #${id}.`,
-          link: '/requisitions',
-          referenceId: Number(id),
-          excludeUserId: req.user.user_id
-        });
+        await client.query(
+          'DELETE FROM notifications WHERE reference_id = $1 AND type LIKE \'REQUISITION_%\'',
+          [id]
+        );
 
         return deleted.rows[0];
       });

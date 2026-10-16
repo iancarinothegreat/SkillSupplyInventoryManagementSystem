@@ -2,6 +2,26 @@ import { query } from '../../../lib/db.js';
 import { withAuth } from '../../../lib/rbac.js';
 import { NOTIFICATION_LINKS } from '../../../lib/notifications.js';
 
+// Only show notifications whose record still exists and is not finished:
+// deleted records vanish, and Released/Rejected requisitions, Returned borrows,
+// and Received/Cancelled/Rejected procurement requests count as done.
+const RECORD_VISIBLE = `
+  AND (
+    CASE
+      WHEN n.type LIKE 'REQUISITION_%' AND n.reference_id IS NOT NULL THEN
+        EXISTS (SELECT 1 FROM requisitions r
+                WHERE r.requisition_id = n.reference_id AND r.status IN ('Pending', 'Approved'))
+      WHEN (n.type LIKE 'BORROW_%' OR n.type LIKE 'RETURN_%') AND n.reference_id IS NOT NULL THEN
+        EXISTS (SELECT 1 FROM borrow_transactions b
+                WHERE b.borrow_id = n.reference_id AND COALESCE(b.status, '') <> 'Returned')
+      WHEN n.type LIKE 'PROCUREMENT_%' AND n.reference_id IS NOT NULL THEN
+        EXISTS (SELECT 1 FROM procurement_requests p
+                WHERE p.procurement_id = n.reference_id AND p.status IN ('Pending', 'Approved'))
+      ELSE TRUE
+    END
+  )
+`;
+
 async function handler(req, res) {
   const user = req.user;
 
@@ -10,14 +30,15 @@ async function handler(req, res) {
       const limit = Math.min(Number(req.query.limit) || 30, 100);
       const rows = await query(`
         SELECT notification_id, type, title, message, link, reference_id, is_read, created_at
-        FROM notifications
-        WHERE user_id = $1
-        ORDER BY created_at DESC
+        FROM notifications n
+        WHERE n.user_id = $1 ${RECORD_VISIBLE}
+        ORDER BY n.created_at DESC
         LIMIT $2
       `, [user.user_id, limit]);
 
       const unread = await query(
-        'SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND is_read = FALSE',
+        `SELECT COUNT(*)::int AS count FROM notifications n
+         WHERE n.user_id = $1 AND n.is_read = FALSE ${RECORD_VISIBLE}`,
         [user.user_id]
       );
 
