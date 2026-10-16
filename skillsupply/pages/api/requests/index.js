@@ -37,6 +37,7 @@ async function handler(req, res) {
           i.quantity_on_hand AS available_stock,
           i.requires_mr,
           i.reorder_level,
+          i.per_division_limit,
           ri.quantity_requested AS quantity,
           ri.quantity_approved,
           ri.quantity_issued,
@@ -70,7 +71,7 @@ async function handler(req, res) {
 
       const requisition = await transaction(async (client) => {
         const itemResult = await client.query(`
-          SELECT item_name, quantity_on_hand
+          SELECT item_name, quantity_on_hand, per_division_limit
           FROM inventory_items
           WHERE item_id = $1 AND is_active = true
           FOR UPDATE
@@ -91,6 +92,26 @@ async function handler(req, res) {
           SELECT division_id FROM users WHERE user_id = $1
         `, [user.user_id]);
         const divisionId = divisionResult.rows[0]?.division_id;
+
+        if (item.per_division_limit != null && divisionId != null) {
+          const usageResult = await client.query(`
+            SELECT COALESCE(SUM(ri.quantity_issued), 0) AS released
+            FROM requisitions r
+            JOIN requisition_items ri ON ri.requisition_id = r.requisition_id
+            WHERE r.division_id = $1 AND ri.item_id = $2 AND r.status = 'Released'
+          `, [divisionId, item_id]);
+          const activeBorrowResult = await client.query(`
+            SELECT COALESCE(SUM(quantity_borrowed), 0) AS active
+            FROM borrow_transactions
+            WHERE division_id = $1 AND item_id = $2 AND status IN ('Borrowed', 'Active', 'Overdue')
+          `, [divisionId, item_id]);
+          const used = Number(usageResult.rows[0].released) + Number(activeBorrowResult.rows[0].active);
+          if (used + parsedQuantity > item.per_division_limit) {
+            const error = new Error(`Per-division limit reached for ${item.item_name}: your division has used ${used} of ${item.per_division_limit} allowed. You can request at most ${item.per_division_limit - used}.`);
+            error.statusCode = 400;
+            throw error;
+          }
+        }
 
         const requisitionResult = await client.query(`
           INSERT INTO requisitions (user_id, division_id, status, requested_date)

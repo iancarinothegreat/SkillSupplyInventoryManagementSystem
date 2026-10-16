@@ -42,7 +42,7 @@ async function handler(req, res) {
           }
 
           const item = await client.query(
-            'SELECT item_id, item_name, unit_of_measure, quantity_on_hand FROM inventory_items WHERE item_id = $1 AND is_active = true FOR UPDATE',
+            'SELECT item_id, item_name, unit_of_measure, quantity_on_hand, per_division_limit FROM inventory_items WHERE item_id = $1 AND is_active = true FOR UPDATE',
             [item_id]
           );
           if (!item.rows[0]) {
@@ -54,6 +54,28 @@ async function handler(req, res) {
             const error = new Error(`Insufficient stock for ${item.rows[0].item_name}: requested ${parsedQuantity}, available ${item.rows[0].quantity_on_hand}.`);
             error.statusCode = 400;
             throw error;
+          }
+
+          const divResult = await client.query('SELECT division_id FROM users WHERE user_id = $1', [req.user.user_id]);
+          const divisionId = divResult.rows[0]?.division_id;
+          if (item.rows[0].per_division_limit != null && divisionId != null) {
+            const releasedRes = await client.query(`
+              SELECT COALESCE(SUM(ri.quantity_issued), 0) AS released
+              FROM requisitions r
+              JOIN requisition_items ri ON ri.requisition_id = r.requisition_id
+              WHERE r.division_id = $1 AND ri.item_id = $2 AND r.status = 'Released'
+            `, [divisionId, item_id]);
+            const borrowRes = await client.query(`
+              SELECT COALESCE(SUM(quantity_borrowed), 0) AS active
+              FROM borrow_transactions
+              WHERE division_id = $1 AND item_id = $2 AND status IN ('Borrowed', 'Active', 'Overdue')
+            `, [divisionId, item_id]);
+            const used = Number(releasedRes.rows[0].released) + Number(borrowRes.rows[0].active);
+            if (used + parsedQuantity > item.rows[0].per_division_limit) {
+              const error = new Error(`Per-division limit reached for ${item.rows[0].item_name}: your division has used ${used} of ${item.rows[0].per_division_limit} allowed. You can request at most ${item.rows[0].per_division_limit - used}.`);
+              error.statusCode = 400;
+              throw error;
+            }
           }
 
           const updated = await client.query(`
@@ -228,7 +250,7 @@ async function handler(req, res) {
 
         const requestedItems = await client.query(`
           SELECT ri.requisition_item_id, ri.item_id, ri.quantity_requested,
-                 i.item_name, i.unit_of_measure, i.quantity_on_hand
+                 i.item_name, i.unit_of_measure, i.quantity_on_hand, i.per_division_limit
           FROM requisition_items ri
           JOIN inventory_items i ON i.item_id = ri.item_id
           WHERE ri.requisition_id = $1
@@ -236,6 +258,32 @@ async function handler(req, res) {
         `, [id]);
 
         let approvedQty = null;
+
+        if (status === 'Approved' && previous.division_id != null) {
+          for (const item of requestedItems.rows) {
+            if (item.per_division_limit == null) continue;
+            const releasedRes = await client.query(`
+              SELECT COALESCE(SUM(ri.quantity_issued), 0) AS released
+              FROM requisitions r
+              JOIN requisition_items ri ON ri.requisition_id = r.requisition_id
+              WHERE r.division_id = $1 AND ri.item_id = $2 AND r.status = 'Released'
+            `, [previous.division_id, item.item_id]);
+            const borrowRes = await client.query(`
+              SELECT COALESCE(SUM(quantity_borrowed), 0) AS active
+              FROM borrow_transactions
+              WHERE division_id = $1 AND item_id = $2 AND status IN ('Borrowed', 'Active', 'Overdue')
+            `, [previous.division_id, item.item_id]);
+            const used = Number(releasedRes.rows[0].released) + Number(borrowRes.rows[0].active);
+            const approveQty = requestedItems.rows.length === 1 && approvedQuantity !== null
+              ? approvedQuantity
+              : item.quantity_requested;
+            if (used + approveQty > item.per_division_limit) {
+              const error = new Error(`Per-division limit reached for ${item.item_name}: this division has used ${used} of ${item.per_division_limit} allowed. Cannot approve more than ${item.per_division_limit - used}.`);
+              error.statusCode = 400;
+              throw error;
+            }
+          }
+        }
 
         if (status === 'Approved') {
           if (requestedItems.rows.length === 1 && approvedQuantity !== null) {

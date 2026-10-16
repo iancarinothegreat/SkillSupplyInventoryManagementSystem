@@ -43,6 +43,7 @@ async function handler(req, res) {
     const to = asDate(req.query.to);
     const divisionId = asInt(req.query.division_id);
     const categoryId = asInt(req.query.category_id);
+    const itemId = asInt(req.query.item_id);
     const status = req.query.status ? asStatus(String(req.query.status), [...BORROW_STATUSES, ...REQUISITION_STATUSES]) : null;
     const borrowStatus = status && BORROW_STATUSES.includes(status) ? status : null;
     const requisitionStatus = status && REQUISITION_STATUSES.includes(status) ? status : null;
@@ -69,6 +70,11 @@ async function handler(req, res) {
       requisitionWhere += ` AND r.requisition_id IN (SELECT requisition_id FROM requisition_items ri JOIN inventory_items ii ON ii.item_id = ri.item_id WHERE ii.category_id = ${categoryId})`;
       invWhere += ` AND i.category_id = ${categoryId}`;
     }
+    if (itemId !== null) {
+      borrowWhere += ` AND bt.item_id = ${itemId}`;
+      requisitionWhere += ` AND r.requisition_id IN (SELECT requisition_id FROM requisition_items WHERE item_id = ${itemId})`;
+      invWhere += ` AND i.item_id = ${itemId}`;
+    }
     if (borrowStatus) borrowWhere += ` AND bt.status = '${borrowStatus}'`;
     if (requisitionStatus) requisitionWhere += ` AND r.status = '${requisitionStatus}'`;
 
@@ -81,6 +87,7 @@ async function handler(req, res) {
     let trendBorrowWhere = `WHERE bt.borrow_date >= '${trendFrom}' AND bt.borrow_date <= '${trendTo}'`;
     if (divisionId !== null) trendBorrowWhere += ` AND bt.division_id = ${divisionId}`;
     if (categoryId !== null) trendBorrowWhere += ` AND bt.item_id IN (SELECT item_id FROM inventory_items WHERE category_id = ${categoryId})`;
+    if (itemId !== null) trendBorrowWhere += ` AND bt.item_id = ${itemId}`;
     if (borrowStatus) trendBorrowWhere += ` AND bt.status = '${borrowStatus}'`;
 
     const monthlyDivisions = divisionId !== null
@@ -256,7 +263,7 @@ async function handler(req, res) {
     const returnRate = totalBorrowed > 0 ? Math.round((totalReturned / totalBorrowed) * 100) : 0;
 
     return res.status(200).json({
-      applied_filters: { from, to, division_id: divisionId, category_id: categoryId, status },
+      applied_filters: { from, to, division_id: divisionId, category_id: categoryId, item_id: itemId, status },
       kpis: {
         totalItems: parseInt(kpi.total_items, 10),
         lowStock: parseInt(kpi.low_stock, 10),

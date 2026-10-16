@@ -20,6 +20,7 @@ export default function MyRequisitionsPage() {
   const [success, setSuccess] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [highlightId, setHighlightId] = useState(null);
+  const [allotment, setAllotment] = useState(null);
 
   const [form, setForm] = useState({
     item_id: '',
@@ -171,6 +172,21 @@ export default function MyRequisitionsPage() {
   const requestedQty = Number(form.quantity) || 0;
   const availableStock = selectedItem ? Number(selectedItem.quantity_on_hand) || 0 : null;
   const overStock = selectedItem && requestedQty > availableStock;
+  const overLimit = allotment && allotment.per_division_limit != null && allotment.used + requestedQty > allotment.per_division_limit;
+
+  useEffect(() => {
+    if (selectedItem && selectedItem.per_division_limit != null) {
+      const token = sessionStorage.getItem('token');
+      fetch(`/api/requests/allotment?item_id=${selectedItem.item_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => setAllotment(data))
+        .catch(() => setAllotment(null));
+    } else {
+      setAllotment(null);
+    }
+  }, [form.item_id, selectedItem]);
 
   const counts = {
     Pending: requisitions.filter(r => r.status === 'Pending').length,
@@ -355,12 +371,19 @@ export default function MyRequisitionsPage() {
                       {requestedQty || 0} {selectedItem.unit_of_measure}
                     </span>
                     {requestedQty > 0 && (
-                      <span className={`w-full ${overStock ? 'text-red-600' : 'text-green-600'}`}>
+                      <span className={`w-full ${overStock || overLimit ? 'text-red-600' : 'text-green-600'}`}>
                         {overStock
                           ? `Exceeds available stock by ${requestedQty - availableStock} ${selectedItem.unit_of_measure}. Please reduce the quantity.`
+                          : overLimit
+                          ? `Per-division limit reached: ${allotment.used}/${allotment.per_division_limit} already used. You can request at most ${allotment.remaining} more.`
                           : `Within available stock (${availableStock - requestedQty} ${selectedItem.unit_of_measure} remaining after release).`}
                       </span>
                     )}
+                    {allotment && allotment.per_division_limit != null ? (
+                      <span className="w-full text-gray-500">
+                        Division allotment: {allotment.used}/{allotment.per_division_limit} used ({allotment.remaining} remaining)
+                      </span>
+                    ) : null}
                     {selectedItem.requires_mr ? (
                       <span className="w-full text-blue-600">This item requires an MR (Memorandum Receipt) upon release.</span>
                     ) : null}
@@ -389,7 +412,7 @@ export default function MyRequisitionsPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setShowModal(false); setEditingRequest(null); }} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">Cancel</button>
-                <button type="submit" disabled={submitting || overStock} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition">
+                <button type="submit" disabled={submitting || overStock || overLimit} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition">
                   {submitting ? 'Saving...' : editingRequest ? 'Save Changes' : 'Submit Request'}
                 </button>
               </div>

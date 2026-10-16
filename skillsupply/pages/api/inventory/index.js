@@ -45,7 +45,7 @@ async function handler(req, res) {
     const {
       item_name, serial_number, category_id, division_id,
       unit_of_measure, quantity_on_hand,
-      reorder_level, defective_quantity, is_returnable, is_borrowable, maximum_borrow_days, requires_mr, unit_cost, description, notes
+      reorder_level, defective_quantity, is_returnable, is_borrowable, maximum_borrow_days, requires_mr, unit_cost, description, notes, per_division_limit
     } = req.body;
 
     if (!item_name) return res.status(400).json({ error: 'Item name required' });
@@ -54,10 +54,10 @@ async function handler(req, res) {
       const result = await query(`
         INSERT INTO inventory_items
           (item_name, serial_number, category_id, division_id, unit_of_measure, quantity_on_hand,
-           reorder_level, defective_quantity, is_returnable, is_borrowable, maximum_borrow_days, requires_mr, unit_cost, description, notes)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           reorder_level, defective_quantity, is_returnable, is_borrowable, maximum_borrow_days, requires_mr, unit_cost, description, notes, per_division_limit)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         RETURNING *
-      `, [item_name, serial_number || null, category_id, division_id, unit_of_measure, quantity_on_hand || 0, reorder_level || 10, defective_quantity ?? 0, is_returnable ?? false, is_borrowable ?? true, parseMaxBorrowDays(maximum_borrow_days), requires_mr ?? false, unit_cost, description || null, notes || null]);
+      `, [item_name, serial_number || null, category_id, division_id, unit_of_measure, quantity_on_hand || 0, reorder_level || 10, defective_quantity ?? 0, is_returnable ?? false, is_borrowable ?? true, parseMaxBorrowDays(maximum_borrow_days), requires_mr ?? false, unit_cost, description || null, notes || null, per_division_limit === '' || per_division_limit == null ? null : parseInt(per_division_limit, 10)]);
 
       await query(`
         INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)

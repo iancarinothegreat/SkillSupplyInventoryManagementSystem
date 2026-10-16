@@ -19,6 +19,7 @@ export default function RequisitionsPage() {
   const [remarks, setRemarks] = useState('');
   const [approvedQty, setApprovedQty] = useState('');
   const [mrNumber, setMrNumber] = useState('');
+  const [allotment, setAllotment] = useState(null);
 
   const openReview = (r) => {
     setSelectedReq(r);
@@ -27,6 +28,16 @@ export default function RequisitionsPage() {
     setMrNumber(r.mr_number || '');
     setError('');
     setSuccess('');
+    setAllotment(null);
+    if (r.per_division_limit != null && r.division_id) {
+      const token = sessionStorage.getItem('token');
+      fetch(`/api/requests/allotment?item_id=${r.item_id}&division_id=${r.division_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => setAllotment(data))
+        .catch(() => setAllotment(null));
+    }
   };
 
   const closeReview = () => {
@@ -288,6 +299,16 @@ export default function RequisitionsPage() {
                   </span>
                 </div>
                 <div className="flex justify-between"><span className="text-gray-500">Purpose</span><span className="text-right max-w-xs">{selectedReq.purpose}</span></div>
+                {selectedReq.per_division_limit != null && allotment ? (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Division Allotment</span>
+                    <span className={`font-semibold ${allotment.remaining < Number(selectedReq.quantity) ? 'text-red-600' : 'text-gray-800'}`}>
+                      {allotment.used}/{allotment.per_division_limit} used ({allotment.remaining} remaining)
+                    </span>
+                  </div>
+                ) : selectedReq.per_division_limit != null ? (
+                  <div className="flex justify-between"><span className="text-gray-500">Division Allotment</span><span className="text-gray-400">Loading…</span></div>
+                ) : null}
                 {selectedReq.requires_mr ? (
                   <div className="flex justify-between"><span className="text-gray-500">MR Receipt</span><span className="text-blue-600 font-medium">Required</span></div>
                 ) : null}
@@ -309,6 +330,7 @@ export default function RequisitionsPage() {
                     Requested {selectedReq.quantity} • Available {selectedReq.available_stock ?? '—'}
                     {Number(approvedQty) > Number(selectedReq.quantity) ? ' • Cannot approve more than requested' : ''}
                     {Number(approvedQty) > Number(selectedReq.available_stock) ? ' • Exceeds available stock' : ''}
+                    {allotment && allotment.per_division_limit != null && allotment.used + Number(approvedQty) > allotment.per_division_limit ? ' • Exceeds division allotment' : ''}
                   </p>
                 </div>
               )}
@@ -357,7 +379,8 @@ export default function RequisitionsPage() {
                         || approvedQty === ''
                         || Number(approvedQty) < 1
                         || Number(approvedQty) > Number(selectedReq.quantity)
-                        || Number(approvedQty) > Number(selectedReq.available_stock)}
+                        || Number(approvedQty) > Number(selectedReq.available_stock)
+                        || (allotment && allotment.per_division_limit != null && allotment.used + Number(approvedQty) > allotment.per_division_limit)}
                       className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition"
                     >
                       Approve

@@ -18,7 +18,7 @@ export default function InventoryPage() {
   const [editItem, setEditItem] = useState(null);
   const [form, setForm] = useState({
     item_name: '', serial_number: '', category_id: '', division_id: '', unit: '',
-    quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, is_borrowable: true, maximum_borrow_days: '', requires_mr: false, notes: ''
+    quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, is_borrowable: true, maximum_borrow_days: '', requires_mr: false, notes: '', per_division_limit: ''
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -57,6 +57,7 @@ export default function InventoryPage() {
       description: values.description || null,
       notes: values.notes || null,
       unit_cost: values.unit_price || 0,
+      per_division_limit: values.per_division_limit === '' || values.per_division_limit == null ? null : Number(values.per_division_limit),
     };
   }
 
@@ -229,7 +230,7 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditItem(null);
-    setForm({ item_name: '', serial_number: '', category_id: '', division_id: '', unit: '', quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, is_borrowable: true, maximum_borrow_days: '', requires_mr: false, notes: '' });
+    setForm({ item_name: '', serial_number: '', category_id: '', division_id: '', unit: '', quantity: '', reorder_point: '', unit_price: '', description: '', defective_quantity: '', is_returnable: false, is_borrowable: true, maximum_borrow_days: '', requires_mr: false, notes: '', per_division_limit: '' });
     setError('');
     setShowModal(true);
   }
@@ -251,7 +252,8 @@ export default function InventoryPage() {
       is_borrowable: item.is_borrowable ?? true,
       maximum_borrow_days: item.maximum_borrow_days ?? '',
       requires_mr: item.requires_mr ?? false,
-      notes: item.notes ?? ''
+      notes: item.notes ?? '',
+      per_division_limit: item.per_division_limit ?? ''
     });
     setError('');
     setShowModal(true);
@@ -755,6 +757,14 @@ export default function InventoryPage() {
                     onChange={e => setForm({ ...form, notes: e.target.value })}
                     placeholder="Reason or notes for defective quantity (optional)"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Per-Division Request Limit</label>
+                  <input type="number" min="1" value={form.per_division_limit}
+                    onChange={e => setForm({ ...form, per_division_limit: e.target.value })}
+                    placeholder="No limit (leave empty)"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <p className="text-xs text-gray-400 mt-1">Maximum quantity each division may request or borrow of this item. Leave empty for no limit.</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Description (optional)</label>

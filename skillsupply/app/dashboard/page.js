@@ -97,8 +97,10 @@ export default function DashboardPage() {
   const [filterDivision, setFilterDivision] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterItem, setFilterItem] = useState('');
   const [divisions, setDivisions] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
   const [requestForecast, setRequestForecast] = useState([]);
 
   // Data state
@@ -123,14 +125,17 @@ export default function DashboardPage() {
     const token = sessionStorage.getItem('token');
     const headers = { Authorization: `Bearer ${token}` };
     try {
-      const [divRes, catRes] = await Promise.all([
+      const [divRes, catRes, invRes] = await Promise.all([
         fetch('/api/public/divisions', { headers }),
-        fetch('/api/categories', { headers })
+        fetch('/api/categories', { headers }),
+        fetch('/api/inventory', { headers })
       ]);
       const divData = await divRes.json();
       const catData = await catRes.json();
+      const invData = await invRes.json();
       setDivisions(Array.isArray(divData) ? divData : []);
       setCategories(Array.isArray(catData) ? catData : (catData.categories || []));
+      setInventoryItems(Array.isArray(invData) ? invData : []);
     } catch (e) {
       console.error('Filter fetch error:', e);
     }
@@ -148,6 +153,7 @@ export default function DashboardPage() {
       if (filterDivision) params.append('division_id', filterDivision);
       if (filterCategory) params.append('category_id', filterCategory);
       if (filterStatus) params.append('status', filterStatus);
+      if (filterItem) params.append('item_id', filterItem);
 
       const fetchOpts = { headers, cache: 'no-store' };
       const [analyticsRes, txRes, forecastRes] = await Promise.all([
@@ -337,7 +343,7 @@ export default function DashboardPage() {
     fetchDashboard();
     const interval = setInterval(() => fetchDashboard({ silent: true }), 30000);
     return () => clearInterval(interval);
-  }, [dateFrom, dateTo, filterDivision, filterCategory, filterStatus]);
+  }, [dateFrom, dateTo, filterDivision, filterCategory, filterStatus, filterItem]);
 
   const clearFilters = () => {
     setDateFrom('');
@@ -345,6 +351,7 @@ export default function DashboardPage() {
     setFilterDivision('');
     setFilterCategory('');
     setFilterStatus('');
+    setFilterItem('');
   };
 
   const requestForecastChart = {
@@ -408,7 +415,7 @@ export default function DashboardPage() {
           </svg>
           <span className="text-sm font-semibold text-gray-700">Filters</span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
           <div>
             <label className="text-xs text-gray-500 mb-1 block">From Date</label>
             <input
@@ -468,6 +475,19 @@ export default function DashboardPage() {
               <option value="Approved">Approved</option>
               <option value="Released">Released</option>
               <option value="Rejected">Rejected</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Item</label>
+            <select
+              value={filterItem}
+              onChange={(e) => setFilterItem(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Items</option>
+              {inventoryItems.map(item => (
+                <option key={item.item_id} value={item.item_id}>{item.item_name}</option>
+              ))}
             </select>
           </div>
           <div className="flex items-end">

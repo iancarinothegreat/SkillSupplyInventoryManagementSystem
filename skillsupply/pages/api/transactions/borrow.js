@@ -29,7 +29,7 @@ async function handler(req, res) {
     const txn = await transaction(async (client) => {
       const stock = await client.query(
         `SELECT quantity_on_hand, item_name, unit_of_measure, is_returnable, is_borrowable,
-                maximum_borrow_days, requires_mr
+                maximum_borrow_days, requires_mr, per_division_limit
          FROM inventory_items WHERE item_id=$1 FOR UPDATE`,
         [item_id]
       );
@@ -54,6 +54,26 @@ async function handler(req, res) {
         const error = new Error('Insufficient stock');
         error.statusCode = 400;
         throw error;
+      }
+
+      if (item.per_division_limit != null) {
+        const releasedRes = await client.query(`
+          SELECT COALESCE(SUM(ri.quantity_issued), 0) AS released
+          FROM requisitions r
+          JOIN requisition_items ri ON ri.requisition_id = r.requisition_id
+          WHERE r.division_id = $1 AND ri.item_id = $2 AND r.status = 'Released'
+        `, [division_id, item_id]);
+        const borrowRes = await client.query(`
+          SELECT COALESCE(SUM(quantity_borrowed), 0) AS active
+          FROM borrow_transactions
+          WHERE division_id = $1 AND item_id = $2 AND status IN ('Borrowed', 'Active', 'Overdue')
+        `, [division_id, item_id]);
+        const used = Number(releasedRes.rows[0].released) + Number(borrowRes.rows[0].active);
+        if (used + quantity > item.per_division_limit) {
+          const error = new Error(`Per-division limit reached for ${item.item_name}: this division has used ${used} of ${item.per_division_limit} allowed. You can borrow at most ${item.per_division_limit - used}.`);
+          error.statusCode = 400;
+          throw error;
+        }
       }
 
       const maxDays = Number(item.maximum_borrow_days) > 0 ? Number(item.maximum_borrow_days) : null;
