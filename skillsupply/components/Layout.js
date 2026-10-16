@@ -197,7 +197,17 @@ export default function Layout({ children }) {
       const token = sessionStorage.getItem('token');
       if (!token) return;
 
-      // Notifications are for every role (staff get status updates on their requests)
+      if (Number(user.hierarchy_level) < 2) {
+        setAllInventory([]);
+        setLowStockItems([]);
+        setOverdueReturns([]);
+        setNotificationCount(0);
+        setNotifs([]);
+        setUnreadCount(0);
+        return;
+      }
+
+      // Request/borrow notifications are for Supply Officer + Administrator only
       try {
         const nRes = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
         if (nRes.ok) {
@@ -206,14 +216,6 @@ export default function Layout({ children }) {
           setUnreadCount(Number(nData.unread_count) || 0);
         }
       } catch {}
-
-      if (Number(user.hierarchy_level) < 2) {
-        setAllInventory([]);
-        setLowStockItems([]);
-        setOverdueReturns([]);
-        setNotificationCount(0);
-        return;
-      }
 
       try {
         const [invRes, txRes] = await Promise.all([
@@ -548,7 +550,8 @@ export default function Layout({ children }) {
               </div>
               )}
 
-              {/* Notification Bell with Dropdown */}
+              {/* Notification Bell with Dropdown (Supply Officer + Admin only) */}
+              {canViewHeaderTools && (
               <div className="relative" ref={notificationRef}>
                 <button
                   onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
@@ -676,6 +679,7 @@ export default function Layout({ children }) {
                 </div>
                 )}
               </div>
+              )}
             </div>
         </header>
         <main className="flex-1 overflow-y-auto p-6">
