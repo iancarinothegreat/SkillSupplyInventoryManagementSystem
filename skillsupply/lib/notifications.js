@@ -73,7 +73,7 @@ export async function createNotification(client, {
   try {
     await targetClient.query(`
       INSERT INTO notifications (user_id, type, title, message, link, reference_id)
-      SELECT DISTINCT u.user_id, $1, $2, $3, $4, $5
+      SELECT DISTINCT u.user_id, $1::varchar, $2::varchar, $3::text, $4::varchar, $5::int
       FROM users u
       JOIN roles r ON r.role_id = u.role_id
       WHERE u.is_active = TRUE
@@ -85,6 +85,7 @@ export async function createNotification(client, {
     `, [type, title, message, link, referenceId, levels, extras, excludeUserId]);
   } catch (err) {
     console.error('Notification insert failed:', err.message);
+    if (client) throw err;
   }
 }
 

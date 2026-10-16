@@ -490,7 +490,7 @@ export default function UsersPage() {
                   onBlur={(e) => setForm({ ...form, full_name: formatFullName(e.target.value) })}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Juan dela Cruz"
-                  pattern="[A-Za-zÀ-ÖØ-öø-ÿñÑ '.\\-]+"
+                  pattern="[A-Za-zÀ-ÖØ-öø-ÿñÑ '.\-]+"
                   title="Full name may contain letters, spaces, hyphens, apostrophes, dots, and ñ (e.g., Juan P. Dela Cruz)."
                 />
                 <p className="mt-1 text-xs text-gray-500">Format: First Name Middle Name Last Name (e.g., Juan Dela Cruz)</p>

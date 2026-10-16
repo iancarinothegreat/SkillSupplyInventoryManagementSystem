@@ -78,7 +78,7 @@ async function handler(req, res) {
         INSERT INTO users (username, password_hash, full_name, email, contact, role_id, division_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7)
         RETURNING user_id, username, full_name, email, role_id, division_id
-      `, [username, hash, normalizedFullName, email, contact, role_id, division_id || null]);
+      `, [username, hash, normalizedFullName, email || '', contact || null, role_id, division_id || null]);
 
       await query(`
         INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
@@ -140,7 +140,7 @@ async function handler(req, res) {
         SET username = $1, full_name = $2, email = $3, contact = $4, role_id = $5, password_hash = $6, is_active = $7, division_id = $8
         WHERE user_id = $9
         RETURNING user_id, username, full_name, email, contact, role_id, is_active, division_id
-      `, [username, normalizedFullName, email || null, contact || null, role_id, password_hash, is_active ?? current.is_active, division_id || null, user_id]);
+      `, [username, normalizedFullName, email || '', contact || null, role_id, password_hash, is_active ?? current.is_active, division_id || null, user_id]);
 
       await query(`
         INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
