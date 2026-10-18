@@ -260,7 +260,10 @@ async function handler(req, res) {
     const kpi = kpiResult.rows[0];
     const totalBorrowed = parseInt(kpi.total_borrowed, 10);
     const totalReturned = parseInt(kpi.total_returned, 10);
-    const returnRate = totalBorrowed > 0 ? Math.round((totalReturned / totalBorrowed) * 100) : 0;
+    // Keep decimal precision so a non-zero return quantity is not displayed as 0%.
+    const returnRate = totalBorrowed > 0
+      ? Number(((totalReturned / totalBorrowed) * 100).toFixed(2))
+      : 0;
 
     return res.status(200).json({
       applied_filters: { from, to, division_id: divisionId, category_id: categoryId, item_id: itemId, status },
