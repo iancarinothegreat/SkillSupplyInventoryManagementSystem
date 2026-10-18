@@ -6,6 +6,7 @@ import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonChart } from '@/components/Skeleton';
 import Pagination from '@/components/Pagination';
 import ChartCard from '@/components/ChartCard';
+import DrillModal from '@/components/DrillModal';
 import {
   COLORS,
   buildAnalyticsCharts,
@@ -355,26 +356,34 @@ export default function ReportsPage() {
     };
   });
 
-  // Filter transactions by date and division
+  // Apply global filters to client-side datasets so KPIs, tables and drill-downs stay consistent
+  const filteredInventory = normalizedInventory.filter((item) => {
+    if (selectedDivision !== 'all' && String(item.division_id) !== String(selectedDivision)) return false;
+    if (selectedCategory !== 'all' && String(item.category_id) !== String(selectedCategory)) return false;
+    return true;
+  });
+
+  const normalizeTxStatus = (s) => (s === 'Active' || s === 'Issued' ? 'Borrowed' : s);
+  const statusFilterActive = selectedStatus !== 'all' && !['Critical', 'Low Stock', 'In Stock'].includes(selectedStatus);
+
+  // Filter transactions by date, division and status
   const filteredTransactions = transactions.filter((t) => {
-    if (!dateRange.from && !dateRange.to && selectedDivision === 'all') return true;
-    const d = new Date(t.borrow_date);
+    const d = new Date(t.borrow_date || t.created_at);
     if (dateRange.from && d < new Date(dateRange.from)) return false;
-    if (dateRange.to && d > new Date(dateRange.to)) return false;
-    if (selectedDivision !== 'all' && String(t.borrower_division_id) !== String(selectedDivision))
-      return false;
+    if (dateRange.to && d > new Date(`${dateRange.to}T23:59:59`)) return false;
+    if (selectedDivision !== 'all' && String(t.division_id) !== String(selectedDivision)) return false;
+    if (statusFilterActive && normalizeTxStatus(t.status) !== normalizeTxStatus(selectedStatus)) return false;
     return true;
   });
 
   // Calculate KPIs
-  const totalItems = normalizedInventory.length;
   const totalIssued = filteredTransactions
     .filter((t) => t.status !== 'Returned')
     .reduce((sum, t) => sum + Number(t.quantity_borrowed ?? t.quantity ?? 0), 0);
   const totalReturned = filteredTransactions
     .filter((t) => t.status === 'Returned')
     .reduce((sum, t) => sum + Number(t.quantity_borrowed ?? t.quantity ?? 0), 0);
-  const totalValue = normalizedInventory.reduce(
+  const totalValue = filteredInventory.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
     0
   );
@@ -411,7 +420,7 @@ export default function ReportsPage() {
   });
   const consumption = Object.values(consumptionData)
     .map((row) => {
-      const inventoryItem = normalizedInventory.find(
+      const inventoryItem = filteredInventory.find(
         (item) => (item.item_name ?? item.name) === row.item_name
       );
       const currentStock = Number(inventoryItem?.quantity ?? 0);
@@ -448,12 +457,24 @@ export default function ReportsPage() {
     requisitionChart: { labels: [], datasets: [] },
   };
 
+  // Global filters applied to procurement rows (division, date)
+  const divisionIdByName = Object.fromEntries(divisions.map((d) => [d.division_name, d.division_id]));
+  const divisionNameById = Object.fromEntries(divisions.map((d) => [String(d.division_id), d.division_name]));
+  const filteredProcurementRows = procurementRows.filter((r) => {
+    const rDivisionId = r.division_id != null ? r.division_id : divisionIdByName[r.division_name];
+    if (selectedDivision !== 'all' && String(rDivisionId) !== String(selectedDivision)) return false;
+    const d = new Date(r.created_at || r.requested_date);
+    if (dateRange.from && d < new Date(dateRange.from)) return false;
+    if (dateRange.to && d > new Date(`${dateRange.to}T23:59:59`)) return false;
+    return true;
+  });
+
   const procurementStatusCounts = {
-    Pending: procurementRows.filter((r) => r.status === 'Pending').length,
-    Approved: procurementRows.filter((r) => r.status === 'Approved').length,
-    Received: procurementRows.filter((r) => r.status === 'Received').length,
-    Rejected: procurementRows.filter((r) => r.status === 'Rejected').length,
-    Cancelled: procurementRows.filter((r) => r.status === 'Cancelled').length,
+    Pending: filteredProcurementRows.filter((r) => r.status === 'Pending').length,
+    Approved: filteredProcurementRows.filter((r) => r.status === 'Approved').length,
+    Received: filteredProcurementRows.filter((r) => r.status === 'Received').length,
+    Rejected: filteredProcurementRows.filter((r) => r.status === 'Rejected').length,
+    Cancelled: filteredProcurementRows.filter((r) => r.status === 'Cancelled').length,
   };
   const procurementStatusChart = {
     labels: Object.keys(procurementStatusCounts).filter((k) => procurementStatusCounts[k] > 0),
@@ -467,7 +488,7 @@ export default function ReportsPage() {
   };
 
   const procurementQty = {};
-  procurementRows.forEach((r) => {
+  filteredProcurementRows.forEach((r) => {
     (r.items || []).forEach((it) => {
       if (!procurementQty[it.item_name]) {
         procurementQty[it.item_name] = { requested: 0, received: 0 };
@@ -543,9 +564,10 @@ export default function ReportsPage() {
       }), { pending: 0, approved: 0, released: 0 })
     : null;
 
-  const unitsOnHand = normalizedInventory.reduce((s, i) => s + Number(i.quantity || 0), 0);
-  const pendingProcurement = procurementRows.filter((r) => r.status === 'Pending').length;
-  const estProcurementCost = procurementRows.reduce(
+  const unitsOnHand = filteredInventory.reduce((s, i) => s + Number(i.quantity || 0), 0);
+
+  const pendingProcurement = filteredProcurementRows.filter((r) => r.status === 'Pending').length;
+  const estProcurementCost = filteredProcurementRows.reduce(
     (sum, r) => sum + (r.items || []).reduce((s, it) => s + Number(it.quantity_requested || 0) * Number(it.unit_cost || 0), 0),
     0
   );
@@ -575,16 +597,11 @@ export default function ReportsPage() {
     loading: Boolean(def.loading),
   });
 
-  const divisionIdByName = Object.fromEntries(divisions.map((d) => [d.division_name, d.division_id]));
-
   const openDivisionItemDrill = (divisionName, datasetLabel) => {
     const divisionId = divisionIdByName[divisionName];
     const byItem = {};
-    transactions.forEach((t) => {
-      if (divisionId != null && String(t.borrower_division_id ?? '') !== String(divisionId)) return;
-      const borrowed = new Date(t.borrow_date || t.created_at);
-      if (dateRange.from && borrowed < new Date(dateRange.from)) return;
-      if (dateRange.to && borrowed > new Date(new Date(`${dateRange.to}T23:59:59`))) return;
+    filteredTransactions.forEach((t) => {
+      if (divisionId != null && String(t.division_id ?? '') !== String(divisionId)) return;
       const key = t.item_name || 'Unknown item';
       if (!byItem[key]) byItem[key] = { item: key, issued: 0, returned: 0 };
       const qty = Number(t.quantity_borrowed ?? t.quantity ?? t.qty ?? 0) || 0;
@@ -597,7 +614,7 @@ export default function ReportsPage() {
       .map(([item, v]) => ({ Item: item, Issued: v.issued, Returned: v.returned }));
     openDrill({
       title: `What ${divisionName} is borrowing — top items`,
-      subtitle: `Per-item breakdown within the selected date range, ordered by issued quantity. Showing up to 15 items.`,
+      subtitle: `Per-item breakdown within the selected filters (period, division, status), ordered by issued quantity. Showing up to 15 items.`,
       columns: ['Item', 'Issued', 'Returned'],
       rows,
     });
@@ -607,7 +624,7 @@ export default function ReportsPage() {
     const divisionId = divisionIdByName[divisionName];
     openDrill({
       title: `Requisitions from ${divisionName}`,
-      subtitle: 'All requisition records for this division in the selected date range.',
+      subtitle: 'All requisition records for this division within the selected filters.',
       loading: true,
       columns: ['ID', 'Item', 'Qty (approved/requested)', 'Status', 'Requested by', 'Date'],
     });
@@ -618,6 +635,15 @@ export default function ReportsPage() {
         const list = Array.isArray(data) ? data : [];
         const rows = list
           .filter((x) => String(x.division_id) === String(divisionId))
+          .filter((x) => {
+            const d = new Date(x.created_at || x.requested_date);
+            if (dateRange.from && d < new Date(dateRange.from)) return false;
+            if (dateRange.to && d > new Date(`${dateRange.to}T23:59:59`)) return false;
+            return true;
+          })
+          .filter((x) => (selectedStatus === 'all' || ['Critical', 'Low Stock', 'In Stock'].includes(selectedStatus)
+            ? true
+            : x.status === selectedStatus))
           .map((x) => ({
             ID: `#${x.id}`,
             Item: x.item_name,
@@ -632,7 +658,7 @@ export default function ReportsPage() {
   };
 
   const openProcurementStatusDrill = (statusLabel) => {
-    const rows = procurementRows
+    const rows = filteredProcurementRows
       .filter((r) => r.status === statusLabel)
       .map((r) => ({
         '#': `#${r.procurement_id}`,
@@ -651,7 +677,7 @@ export default function ReportsPage() {
   };
 
   const openProcurementItemDrill = (itemName) => {
-    const rows = procurementRows
+    const rows = filteredProcurementRows
       .filter((r) => (r.items || []).some((i) => i.item_name === itemName))
       .map((r) => {
         const mine = (r.items || []).filter((i) => i.item_name === itemName);
@@ -676,14 +702,15 @@ export default function ReportsPage() {
     const classify = (item) => {
       const qty = Number(item.quantity_on_hand ?? item.quantity ?? 0);
       const reorder = Number(item.reorder_level ?? item.reorder_point ?? 10);
-      if (qty <= 0) return 'Critical';
-      if (qty <= reorder) return 'Low';
+      if (qty <= reorder) return 'Critical';
+      if (qty <= reorder * 1.5) return 'Low';
       return 'Sufficient';
     };
-    const rows = normalizedInventory
+    const rows = filteredInventory
       .filter((item) => classify(item) === levelLabel)
       .map((item) => ({
         Item: item.name || item.item_name,
+        Division: item.division_name || divisionNameById[String(item.division_id)] || '—',
         Category: item.category_name ?? (item.category || '—'),
         'Units on Hand': Number(item.quantity ?? 0),
         'Reorder Level': Number(item.reorder_level ?? item.reorder_point ?? 10),
@@ -692,17 +719,18 @@ export default function ReportsPage() {
       .sort((a, b) => a['Units on Hand'] - b['Units on Hand']);
     openDrill({
       title: `${levelLabel} stock items`,
-      subtitle: 'Items currently at this stock level under the selected filters (qty ≤ 0 critical, ≤ reorder level low, otherwise sufficient).',
-      columns: ['Item', 'Category', 'Units on Hand', 'Reorder Level', 'Unit Price'],
+      subtitle: 'Items currently at this stock level within the selected filters (Critical: qty ≤ reorder level; Low: ≤ 1.5× reorder level; Sufficient: above), matching the chart buckets.',
+      columns: ['Item', 'Division', 'Category', 'Units on Hand', 'Reorder Level', 'Unit Price'],
       rows,
     });
   };
 
   const openCategoryDrill = (categoryName) => {
-    const rows = normalizedInventory
+    const rows = filteredInventory
       .filter((item) => (item.category_name ?? item.category) === categoryName)
       .map((item) => ({
         Item: item.name || item.item_name,
+        Division: item.division_name || divisionNameById[String(item.division_id)] || '—',
         'Units on Hand': Number(item.quantity ?? 0),
         'Reorder Level': Number(item.reorder_level ?? item.reorder_point ?? 10),
         'Unit Price': fmtPeso(item.unit_price ?? 0),
@@ -710,8 +738,8 @@ export default function ReportsPage() {
       }));
     openDrill({
       title: `Items in "${categoryName}"`,
-      subtitle: 'Every catalog item in this category with its current stock and value.',
-      columns: ['Item', 'Units on Hand', 'Reorder Level', 'Unit Price', 'Stock Value'],
+      subtitle: 'Every catalog item in this category within the selected filters, with its current stock and value.',
+      columns: ['Item', 'Division', 'Units on Hand', 'Reorder Level', 'Unit Price', 'Stock Value'],
       rows,
     });
   };
@@ -1360,61 +1388,14 @@ export default function ReportsPage() {
       </div>
     )}
     {drill && (
-      <div
-        className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
-        onClick={() => setDrill(null)}
-      >
-        <div
-          className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">{drill.title}</h2>
-              {drill.subtitle ? (
-                <p className="text-xs text-gray-400 mt-1 leading-4">{drill.subtitle}</p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => setDrill(null)}
-              className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-            >
-              &times;
-            </button>
-          </div>
-          <div className="px-6 py-4 overflow-auto">
-            {drill.loading ? (
-              <p className="text-sm text-gray-400 text-center py-10">Loading details…</p>
-            ) : drill.rows.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">No records found for this selection within the current filters.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-left text-xs font-semibold text-gray-500">
-                      {drill.columns.map((c) => (
-                        <th key={c} className="py-2 pr-4 whitespace-nowrap">{c}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {drill.rows.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        {drill.columns.map((c) => (
-                          <td key={c} className="py-2 pr-4 text-gray-700 whitespace-nowrap">
-                            {row[c]}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <DrillModal
+        title={drill.title}
+        subtitle={drill.subtitle}
+        columns={drill.columns}
+        rows={drill.rows}
+        loading={drill.loading}
+        onClose={() => setDrill(null)}
+      />
     )}
     </>
   );

@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import KpiCard from '@/components/KpiCard';
+import ChartCard from '@/components/ChartCard';
+import DrillModal from '@/components/DrillModal';
 import { SkeletonKpiCard, SkeletonTableRow, SkeletonChart } from '@/components/Skeleton';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import {
@@ -73,6 +75,8 @@ export default function DashboardPage() {
   const [divisionConsumption, setDivisionConsumption] = useState({ labels: [], datasets: [] });
   const [stockStatusChart, setStockStatusChart] = useState({ labels: [], datasets: [] });
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [drill, setDrill] = useState(null);
 
   async function fetchFilters() {
     const token = sessionStorage.getItem('token');
@@ -140,6 +144,7 @@ export default function DashboardPage() {
       // Recent transactions
       const transactions = Array.isArray(txData) ? txData : (txData.transactions || []);
       setRecentTransactions(transactions.slice(0, 10));
+      setAllTransactions(transactions);
 
     } catch (err) {
       console.error(err);
@@ -185,6 +190,88 @@ export default function DashboardPage() {
       tooltip: createDoughnutTooltipConfig()
     },
     cutout: '60%'
+  });
+
+  // ---- Drill-down helpers (respect the dashboard filters) ----
+  const divisionIdByName = Object.fromEntries(
+    divisions.map((d) => [d.division_name || d.name, d.division_id || d.id])
+  );
+  const itemCategoryById = Object.fromEntries(
+    inventoryItems.map((i) => [String(i.item_id), i.category_id])
+  );
+
+  const normalizeTxStatus = (s) => (s === 'Active' || s === 'Issued' ? 'Borrowed' : s);
+  const statusFilterActive = filterStatus && !['Critical', 'Low Stock', 'In Stock'].includes(filterStatus);
+
+  const openDivisionItemDrill = (divisionName) => {
+    const divisionId = divisionIdByName[divisionName];
+    const byItem = {};
+    allTransactions.forEach((t) => {
+      if (divisionId != null && String(t.division_id ?? '') !== String(divisionId)) return;
+      const d = new Date(t.borrow_date || t.created_at);
+      if (dateFrom && d < new Date(dateFrom)) return;
+      if (dateTo && d > new Date(`${dateTo}T23:59:59`)) return;
+      if (statusFilterActive && normalizeTxStatus(t.status) !== normalizeTxStatus(filterStatus)) return;
+      if (filterItem && String(t.item_id) !== String(filterItem)) return;
+      if (filterCategory && String(itemCategoryById[String(t.item_id)] ?? '') !== String(filterCategory)) return;
+      const key = t.item_name || 'Unknown item';
+      if (!byItem[key]) byItem[key] = { item: key, issued: 0, returned: 0 };
+      const qty = Number(t.quantity_borrowed ?? t.quantity ?? t.qty ?? 0) || 0;
+      if (t.status === 'Returned') byItem[key].returned += qty;
+      else byItem[key].issued += qty;
+    });
+    const rows = Object.entries(byItem)
+      .sort((a, b) => b[1].issued - a[1].issued)
+      .slice(0, 15)
+      .map(([item, v]) => ({ Item: item, Issued: v.issued, Returned: v.returned }));
+    setDrill({
+      title: `What ${divisionName} is borrowing — top items`,
+      subtitle: 'Per-item breakdown within the selected dashboard filters, ordered by issued quantity. Showing up to 15 items.',
+      columns: ['Item', 'Issued', 'Returned'],
+      rows,
+      loading: false,
+    });
+  };
+
+  const openStockLevelDrill = (levelLabel) => {
+    const classify = (item) => {
+      const qty = Number(item.quantity_on_hand ?? item.quantity ?? 0);
+      const reorder = Number(item.reorder_level ?? 10);
+      if (qty <= reorder) return 'Critical';
+      if (qty <= reorder * 1.5) return 'Low';
+      return 'Sufficient';
+    };
+    const rows = inventoryItems
+      .filter((item) => {
+        if (filterDivision && String(item.division_id) !== String(filterDivision)) return false;
+        if (filterCategory && String(item.category_id) !== String(filterCategory)) return false;
+        if (filterItem && String(item.item_id) !== String(filterItem)) return false;
+        return classify(item) === levelLabel;
+      })
+      .map((item) => ({
+        Item: item.item_name,
+        Division: item.division_name || '—',
+        Category: item.category_name || '—',
+        'Units on Hand': Number(item.quantity_on_hand ?? 0),
+        'Reorder Level': Number(item.reorder_level ?? 10),
+        'Unit Cost': formatCurrency(item.unit_cost ?? 0),
+      }))
+      .sort((a, b) => a['Units on Hand'] - b['Units on Hand']);
+    setDrill({
+      title: `${levelLabel} stock items`,
+      subtitle: 'Items at this stock level within the selected dashboard filters (Critical: qty ≤ reorder level; Low: ≤ 1.5×; Sufficient: above), matching the chart buckets.',
+      columns: ['Item', 'Division', 'Category', 'Units on Hand', 'Reorder Level', 'Unit Cost'],
+      rows,
+      loading: false,
+    });
+  };
+
+  const withChartClick = (options, onIndex) => ({
+    ...options,
+    onClick: (event, elements) => {
+      const el = elements && elements[0];
+      if (el) onIndex(el.index);
+    },
   });
 
   const kpiCards = [
@@ -311,20 +398,31 @@ export default function DashboardPage() {
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {/* Division-wise Consumption */}
-        <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Division Consumption Analytics</h2>
+        <ChartCard
+          title="Division Consumption Analytics"
+          description="Units borrowed vs returned per division in the selected period. Click a division to see its top borrowed items."
+          className="shadow-sm lg:col-span-2"
+        >
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
             <div style={{ height: 320 }}>
-              <Bar data={divisionConsumption} options={chartOptions} />
+              <Bar
+                data={divisionConsumption}
+                options={withChartClick(chartOptions, (idx) =>
+                  openDivisionItemDrill(divisionConsumption.labels[idx])
+                )}
+              />
             </div>
           )}
-        </div>
+        </ChartCard>
 
         {/* Stock Status */}
-        <div className="bg-white rounded-xl shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Stock Status Distribution</h2>
+        <ChartCard
+          title="Stock Status Distribution"
+          description="Share of catalog items by stock level. Click a slice to list the items behind it."
+          className="shadow-sm"
+        >
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
@@ -332,7 +430,12 @@ export default function DashboardPage() {
               {stockStatusChart.labels.length > 0 ? (
                 <>
                   <div className="flex-1 h-full min-w-0">
-                    <Doughnut data={stockStatusChart} options={doughnutOptions('bottom', false)} />
+                    <Doughnut
+                      data={stockStatusChart}
+                      options={withChartClick(doughnutOptions('bottom', false), (idx) =>
+                        openStockLevelDrill(stockStatusChart.labels[idx])
+                      )}
+                    />
                   </div>
                   <DoughnutPercentageLegend
                     labels={stockStatusChart.labels}
@@ -345,7 +448,7 @@ export default function DashboardPage() {
               )}
             </div>
           )}
-        </div>
+        </ChartCard>
       </div>
 
       {/* Recent Issuances */}
@@ -396,6 +499,16 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
+      {drill && (
+        <DrillModal
+          title={drill.title}
+          subtitle={drill.subtitle}
+          columns={drill.columns}
+          rows={drill.rows}
+          loading={drill.loading}
+          onClose={() => setDrill(null)}
+        />
+      )}
     </div>
   );
 }
