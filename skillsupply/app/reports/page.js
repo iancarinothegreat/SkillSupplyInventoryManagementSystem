@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonChart, SkeletonTableRow } from '@/components/Skeleton';
+import Pagination from '@/components/Pagination';
 import * as XLSX from 'xlsx';
 import { Line } from 'react-chartjs-2';
 import {
@@ -96,6 +97,7 @@ export default function ReportsPage() {
   const [auditAction, setAuditAction] = useState('all');
   const [auditSort, setAuditSort] = useState('timestamp');
   const [auditOrder, setAuditOrder] = useState('DESC');
+  const [reportPage, setReportPage] = useState(1);
 
   const getToken = () => {
     if (typeof window === 'undefined') return '';
@@ -228,6 +230,10 @@ export default function ReportsPage() {
   useEffect(() => {
     queueMicrotask(fetchReport);
   }, [fetchReport]);
+
+  useEffect(() => {
+    setReportPage(1);
+  }, [selectedReport, selectedDivision, selectedCategory, selectedStatus, dateRange, auditSearch, auditAction, auditOrder]);
 
   const handleExportPDF = async () => {
     setExporting(true);
@@ -383,6 +389,14 @@ export default function ReportsPage() {
       };
     })
     .slice(0, 10);
+
+  const reportPageSize = 10;
+  const reportPageCount = Math.max(1, Math.ceil(reportRows.length / reportPageSize));
+  const reportCurrentPage = Math.min(reportPage, reportPageCount);
+  const pagedReportRows = reportRows.slice(
+    (reportCurrentPage - 1) * reportPageSize,
+    reportCurrentPage * reportPageSize
+  );
 
   return (
     <>
@@ -628,7 +642,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {reportRows.map((row, index) => (
+                  {pagedReportRows.map((row, index) => (
                     <tr key={index} className="hover:bg-gray-50">
                       {Object.keys(reportRows[0]).map((column) => {
                         const val = row[column];
@@ -668,6 +682,12 @@ export default function ReportsPage() {
               </table>
             )}
           </div>
+          <Pagination
+            page={reportCurrentPage}
+            pageSize={reportPageSize}
+            total={reportRows.length}
+            onPageChange={setReportPage}
+          />
         </div>
 
         {/* Bottom Section: KPIs, Charts, Consumption Details */}

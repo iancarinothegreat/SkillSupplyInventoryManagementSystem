@@ -5,6 +5,7 @@ import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
 import { broadcastRequisitionUpdate } from '../../lib/events';
 import ProcurementModule from '../../components/ProcurementModule';
+import Pagination from '../../components/Pagination';
 
 export default function RequisitionsPage() {
   const searchParams = useSearchParams();
@@ -21,6 +22,7 @@ export default function RequisitionsPage() {
   const [approvedQty, setApprovedQty] = useState('');
   const [mrNumber, setMrNumber] = useState('');
   const [allotment, setAllotment] = useState(null);
+  const [page, setPage] = useState(1);
 
   const openReview = (r) => {
     setSelectedReq(r);
@@ -134,6 +136,11 @@ export default function RequisitionsPage() {
 
   const filtered = filterStatus === 'all' ? requisitions : requisitions.filter(r => r.status === filterStatus);
 
+  const reqPageSize = 10;
+  const reqPageCount = Math.max(1, Math.ceil(filtered.length / reqPageSize));
+  const reqPage = Math.min(page, reqPageCount);
+  const pagedRequisitions = filtered.slice((reqPage - 1) * reqPageSize, reqPage * reqPageSize);
+
   const statusBadge = (status) => {
     const map = {
       Pending: 'bg-yellow-100 text-yellow-800',
@@ -191,7 +198,7 @@ export default function RequisitionsPage() {
           {['all', 'Pending', 'Approved', 'Released', 'Rejected'].map((s) => (
             <button
               key={s}
-              onClick={() => setFilterStatus(s)}
+              onClick={() => { setFilterStatus(s); setPage(1); }}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                 filterStatus === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
               }`}
@@ -233,7 +240,7 @@ export default function RequisitionsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filtered.map((r) => (
+                  {pagedRequisitions.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-50 transition">
                       <td className="px-4 py-3 text-sm text-gray-500">#{r.id}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{r.requester_name || r.username}</td>
@@ -276,6 +283,12 @@ export default function RequisitionsPage() {
               </table>
             </div>
           )}
+          <Pagination
+            page={reqPage}
+            pageSize={reqPageSize}
+            total={filtered.length}
+            onPageChange={setPage}
+          />
         </div>
 
         {/* Procurement section */}

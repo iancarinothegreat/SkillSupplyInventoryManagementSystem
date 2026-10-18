@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import KpiCard from './KpiCard';
+import Pagination from './Pagination';
 
 const STATUS_STYLES = {
   Pending: 'bg-yellow-100 text-yellow-800',
@@ -27,6 +28,7 @@ export default function ProcurementModule() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({
     division_id: '',
@@ -72,6 +74,11 @@ export default function ProcurementModule() {
   const pendingCount = requests.filter((r) => r.status === 'Pending').length;
   const approvedCount = requests.filter((r) => r.status === 'Approved').length;
   const receivedCount = requests.filter((r) => r.status === 'Received').length;
+
+  const procPageSize = 10;
+  const procPageCount = Math.max(1, Math.ceil(filtered.length / procPageSize));
+  const procPage = Math.min(page, procPageCount);
+  const pagedRequests = filtered.slice((procPage - 1) * procPageSize, procPage * procPageSize);
 
   const openCreate = () => {
     setForm({ division_id: '', justification: '', supplier_name: '', reference_number: '', notes: '', items: [{ item_id: '', quantity_requested: '', unit_cost: '' }] });
@@ -194,7 +201,7 @@ export default function ProcurementModule() {
           {['all', 'Pending', 'Approved', 'Received', 'Rejected', 'Cancelled'].map((s) => (
             <button
               key={s}
-              onClick={() => setFilterStatus(s)}
+              onClick={() => { setFilterStatus(s); setPage(1); }}
               className={`text-xs px-3 py-1.5 rounded-lg font-medium transition ${filterStatus === s ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             >
               {s === 'all' ? 'All' : s}
@@ -219,7 +226,7 @@ export default function ProcurementModule() {
                   </td>
                 </tr>
               )}
-              {filtered.map((r) => (
+              {pagedRequests.map((r) => (
                 <tr key={r.procurement_id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">#{r.procurement_id}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">{r.division_name || '—'}</td>
@@ -252,6 +259,12 @@ export default function ProcurementModule() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={procPage}
+          pageSize={procPageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+        />
       </div>
 
       {showModal && (
