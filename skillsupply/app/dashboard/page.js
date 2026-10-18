@@ -279,7 +279,7 @@ export default function DashboardPage() {
     { label: 'CRITICAL STOCK', value: loading ? '...' : kpis.lowStock, color: 'text-red-600', sub: 'Items at or below reorder level' },
     { label: 'ITEMS ON LOAN', value: loading ? '...' : kpis.itemsOnLoan, color: 'text-orange-600', sub: 'Units currently borrowed and unreturned' },
     { label: 'TOTAL TRANSACTIONS', value: loading ? '...' : kpis.totalTransactions, color: 'text-purple-600', sub: 'All borrow/return transactions to date' },
-    { label: 'RETURN RATE', value: loading ? '...' : `${kpis.returnRate}%`, color: 'text-green-600', sub: 'Percentage of borrowed units returned' },
+    { label: 'RETURN RATE', value: loading ? '...' : `${kpis.returnRate}%`, color: 'text-green-600', sub: 'Percentage of transactions returned' },
     { label: 'TOTAL VALUE', value: loading ? '...' : formatCurrency(kpis.totalValue), color: 'text-cyan-600', sub: 'Current stock value at unit cost' }
   ];
 

@@ -115,6 +115,7 @@ async function handler(req, res) {
           (SELECT COALESCE(SUM(rt.quantity_returned), 0) FROM return_transactions rt JOIN borrow_transactions bt ON bt.borrow_id = rt.borrow_id ${borrowWhere}) AS total_returned,
           (SELECT COUNT(*) FROM borrow_transactions bt ${borrowWhere} AND bt.status IN ('Borrowed','Overdue')) AS items_on_loan,
           (SELECT COUNT(*) FROM borrow_transactions bt ${borrowWhere}) AS total_transactions,
+          (SELECT COUNT(*) FROM borrow_transactions bt ${borrowWhere} AND bt.status = 'Returned') AS returned_transactions,
           (SELECT COUNT(DISTINCT la.user_id) FROM login_audit la WHERE la.action = 'LOGIN') AS active_users,
           (SELECT COALESCE(SUM(i.unit_cost * i.quantity_on_hand), 0) FROM inventory_items i ${invWhere}) AS total_value
       `),
@@ -258,11 +259,11 @@ async function handler(req, res) {
     ]);
 
     const kpi = kpiResult.rows[0];
-    const totalBorrowed = parseInt(kpi.total_borrowed, 10);
-    const totalReturned = parseInt(kpi.total_returned, 10);
-    // Keep decimal precision so a non-zero return quantity is not displayed as 0%.
-    const returnRate = totalBorrowed > 0
-      ? Number(((totalReturned / totalBorrowed) * 100).toFixed(2))
+    const totalTransactions = parseInt(kpi.total_transactions, 10);
+    const returnedTransactions = parseInt(kpi.returned_transactions, 10);
+    // Transaction-based rate: returned transaction records / all transaction records.
+    const returnRate = totalTransactions > 0
+      ? Number(((returnedTransactions / totalTransactions) * 100).toFixed(2))
       : 0;
 
     return res.status(200).json({
