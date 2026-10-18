@@ -20,7 +20,7 @@ async function loadRequest(client, id) {
 }
 
 async function handlePut(req, res) {
-  const { procurement_id } = req.query;
+  const { id: procurement_id } = req.query;
   const { status, approval_remarks, received_items } = req.body || {};
   const client = await db.connect();
   try {
@@ -134,7 +134,7 @@ async function handlePut(req, res) {
 }
 
 async function handleDelete(req, res) {
-  const { procurement_id } = req.query;
+  const { id: procurement_id } = req.query;
   const client = await db.connect();
   try {
     await client.query('BEGIN');
