@@ -364,11 +364,11 @@ export default function TransactionsPage() {
             Array.from({ length: 4 }).map((_, i) => <SkeletonKpiCard key={i} />)
           ) : (
             <>
-              <KpiCard label="Active" value={activeCount} />
-              <KpiCard label="Pending Review" value={pendingCount} />
-              <KpiCard label="Borrowed" value={borrowedCount} />
-              <KpiCard label="Overdue" value={overdueCount} />
-              <KpiCard label="Returned" value={returnedCount} />
+              <KpiCard label="Active" value={activeCount} sub="Borrowed or issued, not yet returned" />
+              <KpiCard label="Pending Review" value={pendingCount} sub="Awaiting supply officer action" />
+              <KpiCard label="Borrowed" value={borrowedCount} sub="Units currently out on loan" />
+              <KpiCard label="Overdue" value={overdueCount} sub="Past expected return date" />
+              <KpiCard label="Returned" value={returnedCount} sub="Units returned and closed" />
             </>
           )}
         </div>

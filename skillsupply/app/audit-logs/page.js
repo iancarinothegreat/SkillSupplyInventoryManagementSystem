@@ -81,11 +81,11 @@ export default function AuditLogsPage() {
             Array.from({ length: 5 }).map((_, i) => <SkeletonKpiCard key={i} />)
           ) : (
             <>
-              <KpiCard label="TOTAL LOGINS" value={totalLogins} />
-              <KpiCard label="TOTAL LOGOUTS" value={totalLogouts} />
-              <KpiCard label="FAILED LOGINS" value={failedLogins} />
-              <KpiCard label="UNIQUE USERS" value={uniqueUsers} />
-              <KpiCard label="TOTAL EVENTS" value={Number(totals.total_events) || 0} />
+              <KpiCard label="TOTAL LOGINS" value={totalLogins} sub="Successful sign-ins in period" />
+              <KpiCard label="TOTAL LOGOUTS" value={totalLogouts} sub="Signed-out sessions in period" />
+              <KpiCard label="FAILED LOGINS" value={failedLogins} sub="Failed sign-in attempts" />
+              <KpiCard label="UNIQUE USERS" value={uniqueUsers} sub="Distinct users who signed in" />
+              <KpiCard label="TOTAL EVENTS" value={Number(totals.total_events) || 0} sub="All login/logout/failure events" />
             </>
           )}
         </div>

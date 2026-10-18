@@ -275,12 +275,12 @@ export default function DashboardPage() {
   });
 
   const kpiCards = [
-    { label: 'TOTAL ITEMS', value: loading ? '...' : kpis.totalItems, color: 'text-blue-600' },
-    { label: 'CRITICAL STOCK', value: loading ? '...' : kpis.lowStock, color: 'text-red-600' },
-    { label: 'ITEMS ON LOAN', value: loading ? '...' : kpis.itemsOnLoan, color: 'text-orange-600' },
-    { label: 'TOTAL TRANSACTIONS', value: loading ? '...' : kpis.totalTransactions, color: 'text-purple-600' },
-    { label: 'RETURN RATE', value: loading ? '...' : `${kpis.returnRate}%`, color: 'text-green-600' },
-    { label: 'TOTAL VALUE', value: loading ? '...' : formatCurrency(kpis.totalValue), color: 'text-cyan-600' }
+    { label: 'TOTAL ITEMS', value: loading ? '...' : kpis.totalItems, color: 'text-blue-600', sub: 'Distinct catalog items in inventory' },
+    { label: 'CRITICAL STOCK', value: loading ? '...' : kpis.lowStock, color: 'text-red-600', sub: 'Items at or below reorder level' },
+    { label: 'ITEMS ON LOAN', value: loading ? '...' : kpis.itemsOnLoan, color: 'text-orange-600', sub: 'Units currently borrowed and unreturned' },
+    { label: 'TOTAL TRANSACTIONS', value: loading ? '...' : kpis.totalTransactions, color: 'text-purple-600', sub: 'All borrow/return transactions to date' },
+    { label: 'RETURN RATE', value: loading ? '...' : `${kpis.returnRate}%`, color: 'text-green-600', sub: 'Percentage of borrowed units returned' },
+    { label: 'TOTAL VALUE', value: loading ? '...' : formatCurrency(kpis.totalValue), color: 'text-cyan-600', sub: 'Current stock value at unit cost' }
   ];
 
   return (
@@ -390,7 +390,7 @@ export default function DashboardPage() {
           Array.from({ length: 6 }).map((_, i) => <SkeletonKpiCard key={i} />)
         ) : (
           kpiCards.map((kpi, i) => (
-            <KpiCard key={i} label={kpi.label} value={kpi.value} />
+            <KpiCard key={i} label={kpi.label} value={kpi.value} sub={kpi.sub} />
           ))
         )}
       </div>

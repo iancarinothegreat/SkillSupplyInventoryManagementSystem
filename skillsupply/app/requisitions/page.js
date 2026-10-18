@@ -189,7 +189,8 @@ export default function RequisitionsPage() {
             { label: 'Released', value: counts.Released },
             { label: 'Rejected', value: counts.Rejected },
           ].map((s) => (
-            <KpiCard key={s.label} label={`${s.label} Requests`} value={s.value} />
+            <KpiCard key={s.label} label={`${s.label} Requests`} value={s.value}
+              sub={s.label === 'all' ? 'All requisition requests' : s.label === 'Pending' ? 'Awaiting approval' : s.label === 'Approved' ? 'Approved, awaiting release' : s.label === 'Released' ? 'Items released to requester' : 'Denied requests'} />
           ))}
         </div>
 

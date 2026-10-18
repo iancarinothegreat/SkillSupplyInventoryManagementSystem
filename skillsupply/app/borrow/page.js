@@ -313,7 +313,8 @@ export default function BorrowPage() {
           { label: 'Overdue', value: overdueCount },
           { label: 'Returned', value: returnedCount },
         ].map((s) => (
-          <KpiCard key={s.label} label={s.label} value={s.value} />
+          <KpiCard key={s.label} label={s.label} value={s.value}
+            sub={s.label === 'Pending Review' ? 'Borrow requests awaiting approval' : s.label === 'Borrowed' ? 'Units currently out on loan' : s.label === 'Overdue' ? 'Past expected return date' : 'Units returned and closed'} />
         ))}
       </div>
 

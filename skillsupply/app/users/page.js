@@ -48,10 +48,10 @@ const roleBadge = (roleId) => {
 };
 
 const STATS_CONFIG = [
-  { label: 'Total Users', filter: () => true },
-  { label: 'Administrators', filter: (u) => u.role_id === 3 },
-  { label: 'Supply Officers', filter: (u) => u.role_id === 2 },
-  { label: 'Division Staff', filter: (u) => u.role_id === 1 },
+  { label: 'Total Users', filter: () => true, sub: 'All registered system users' },
+  { label: 'Administrators', filter: (u) => u.role_id === 3, sub: 'Users with administrator role' },
+  { label: 'Supply Officers', filter: (u) => u.role_id === 2, sub: 'Users with supply officer role' },
+  { label: 'Division Staff', filter: (u) => u.role_id === 1, sub: 'Users with division staff role' },
 ];
 
 const TABLE_HEADERS = ['ID', 'Username', 'Full Name', 'Email', 'Contact', 'Role', 'Division', 'Created', 'Actions'];
@@ -291,7 +291,7 @@ export default function UsersPage() {
             ))
           ) : (
             STATS_CONFIG.map((s) => (
-              <KpiCard key={s.label} label={s.label} value={users.filter(s.filter).length} />
+              <KpiCard key={s.label} label={s.label} value={users.filter(s.filter).length} sub={s.sub} />
             ))
           )}
         </div>

@@ -254,11 +254,11 @@ export default function ForecastPage() {
           Array.from({ length: 5 }).map((_, i) => <SkeletonKpiCard key={i} />)
         ) : (
           <>
-            <KpiCard label="CRITICAL ITEMS" value={criticalCount} />
-            <KpiCard label="WARNING ITEMS" value={warningCount} />
-            <KpiCard label="SAFE ITEMS" value={safeCount} />
-            <KpiCard label="FORECAST ACCURACY" value={`${overallAccuracy}%`} />
-            <KpiCard label="FORECASTED DEMAND" value={`${totalForecastedDemand.toLocaleString()} units`} />
+            <KpiCard label="CRITICAL ITEMS" value={criticalCount} sub="Items at or below reorder level" />
+            <KpiCard label="WARNING ITEMS" value={warningCount} sub="Items nearing reorder level" />
+            <KpiCard label="SAFE ITEMS" value={safeCount} sub="Items with sufficient stock" />
+            <KpiCard label="FORECAST ACCURACY" value={`${overallAccuracy}%`} sub="Predicted vs actual demand match" />
+            <KpiCard label="FORECASTED DEMAND" value={`${totalForecastedDemand.toLocaleString()} units`} sub="Projected units needed next period" />
           </>
         )}
       </div>

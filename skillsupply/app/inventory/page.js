@@ -411,18 +411,22 @@ export default function InventoryPage() {
             <>
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
                 <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Total Items</p>
+                <p className="text-[11px] text-gray-400 leading-4 mt-1">Distinct catalog items</p>
                 <p className="text-3xl font-bold text-[#1f2d42] leading-none">{totalItems}</p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
                 <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Showing</p>
+                <p className="text-[11px] text-gray-400 leading-4 mt-1">Items currently displayed after filters</p>
                 <p className="text-3xl font-bold text-[#1f2d42] leading-none">{showingItems}</p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
                 <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Critical Stock</p>
+                <p className="text-[11px] text-gray-400 leading-4 mt-1">Items at or below reorder level</p>
                 <p className="text-3xl font-bold text-[#1f2d42] leading-none">{criticalStock}</p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
                 <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Est. Value</p>
+                <p className="text-[11px] text-gray-400 leading-4 mt-1">Current stock value at unit cost</p>
                 <p className="text-3xl font-bold text-[#1f2d42] leading-none">₱{estValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               </div>
             </>

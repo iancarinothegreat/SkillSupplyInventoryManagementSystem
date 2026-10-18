@@ -191,9 +191,9 @@ export default function ProcurementModule() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <KpiCard label="Pending Requests" value={pendingCount} />
-        <KpiCard label="Approved (Awaiting Delivery)" value={approvedCount} />
-        <KpiCard label="Received" value={receivedCount} />
+        <KpiCard label="Pending Requests" value={pendingCount} sub="Purchase requests awaiting approval" />
+        <KpiCard label="Approved (Awaiting Delivery)" value={approvedCount} sub="Approved, not yet received" />
+        <KpiCard label="Received" value={receivedCount} sub="Items received from suppliers" />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
