@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonChart } from '@/components/Skeleton';
 import Pagination from '@/components/Pagination';
+import ChartCard from '@/components/ChartCard';
 import {
   COLORS,
   buildAnalyticsCharts,
@@ -115,6 +116,7 @@ export default function ReportsPage() {
   const [reportPage, setReportPage] = useState(1);
   const [activeTab, setActiveTab] = useState('inventory');
   const [analyticsCharts, setAnalyticsCharts] = useState(null);
+  const [analyticsRaw, setAnalyticsRaw] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [procurementRows, setProcurementRows] = useState([]);
   const [forecastRows, setForecastRows] = useState([]);
@@ -244,6 +246,7 @@ export default function ReportsPage() {
       };
       const analytics = await safeJson(analyticsRes);
       setAnalyticsCharts(buildAnalyticsCharts(analytics || {}));
+      setAnalyticsRaw(analytics || {});
 
       if (activeTab === 'requisitions') {
         const procData = await safeJson(procurementRes);
@@ -527,6 +530,200 @@ export default function ReportsPage() {
     }
   };
 
+  const [drill, setDrill] = useState(null);
+
+  const fmtPeso = (n) => `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const analyticsK = analyticsRaw && analyticsRaw.kpis ? analyticsRaw.kpis : {};
+  const requisitionTotals = Array.isArray(analyticsRaw && analyticsRaw.requisitions)
+    ? analyticsRaw.requisitions.reduce((acc, r) => ({
+        pending: acc.pending + Number(r.pending || 0),
+        approved: acc.approved + Number(r.approved || 0),
+        released: acc.released + Number(r.released || 0),
+      }), { pending: 0, approved: 0, released: 0 })
+    : null;
+
+  const unitsOnHand = normalizedInventory.reduce((s, i) => s + Number(i.quantity || 0), 0);
+  const pendingProcurement = procurementRows.filter((r) => r.status === 'Pending').length;
+  const estProcurementCost = procurementRows.reduce(
+    (sum, r) => sum + (r.items || []).reduce((s, it) => s + Number(it.quantity_requested || 0) * Number(it.unit_cost || 0), 0),
+    0
+  );
+
+  const tabKpis = activeTab === 'inventory' ? [
+    { label: 'Total Items', value: analyticsK.totalItems ?? '—', sub: 'Distinct catalog items' },
+    { label: 'Units on Hand', value: unitsOnHand.toLocaleString(), sub: 'Sum of current stock across all items' },
+    { label: 'Critical Stock', value: analyticsK.lowStock ?? '—', sub: 'Items at or below reorder level' },
+    { label: 'Inventory Value', value: fmtPeso(totalValue), sub: 'Current stock × unit cost' },
+  ] : activeTab === 'borrowing' ? [
+    { label: 'Total Issued', value: totalIssued.toLocaleString(), sub: 'Units borrowed (not yet returned) in period' },
+    { label: 'Total Returned', value: totalReturned.toLocaleString(), sub: 'Units returned in period' },
+    { label: 'Items On Loan', value: analyticsK.itemsOnLoan ?? '—', sub: 'Currently borrowed, unreturned' },
+    { label: 'Return Rate', value: analyticsK.returnRate != null ? `${analyticsK.returnRate}%` : '—', sub: 'Returned vs issued units' },
+  ] : [
+    { label: 'Pending Requisitions', value: requisitionTotals ? requisitionTotals.pending : '—', sub: 'Across divisions, awaiting action' },
+    { label: 'Approved / Released', value: requisitionTotals ? `${requisitionTotals.approved} / ${requisitionTotals.released}` : '—', sub: 'Requisition statuses to date' },
+    { label: 'Pending Procurement', value: pendingProcurement, sub: 'Supplier requests awaiting action' },
+    { label: 'Est. Procurement Cost', value: fmtPeso(estProcurementCost), sub: 'Requested qty × unit cost' },
+  ];
+
+  const openDrill = (def) => setDrill({
+    title: def.title,
+    subtitle: def.subtitle,
+    columns: def.columns,
+    rows: def.rows || [],
+    loading: Boolean(def.loading),
+  });
+
+  const divisionIdByName = Object.fromEntries(divisions.map((d) => [d.division_name, d.division_id]));
+
+  const openDivisionItemDrill = (divisionName, datasetLabel) => {
+    const divisionId = divisionIdByName[divisionName];
+    const byItem = {};
+    transactions.forEach((t) => {
+      if (divisionId != null && String(t.borrower_division_id ?? '') !== String(divisionId)) return;
+      const borrowed = new Date(t.borrow_date || t.created_at);
+      if (dateRange.from && borrowed < new Date(dateRange.from)) return;
+      if (dateRange.to && borrowed > new Date(new Date(`${dateRange.to}T23:59:59`))) return;
+      const key = t.item_name || 'Unknown item';
+      if (!byItem[key]) byItem[key] = { item: key, issued: 0, returned: 0 };
+      const qty = Number(t.quantity_borrowed ?? t.quantity ?? t.qty ?? 0) || 0;
+      if (t.status === 'Returned') byItem[key].returned += qty;
+      else byItem[key].issued += qty;
+    });
+    const rows = Object.entries(byItem)
+      .sort((a, b) => b[1].issued - a[1].issued)
+      .slice(0, 15)
+      .map(([item, v]) => ({ Item: item, Issued: v.issued, Returned: v.returned }));
+    openDrill({
+      title: `What ${divisionName} is borrowing — top items`,
+      subtitle: `Per-item breakdown within the selected date range, ordered by issued quantity. Showing up to 15 items.`,
+      columns: ['Item', 'Issued', 'Returned'],
+      rows,
+    });
+  };
+
+  const openRequisitionDrill = (divisionName) => {
+    const divisionId = divisionIdByName[divisionName];
+    openDrill({
+      title: `Requisitions from ${divisionName}`,
+      subtitle: 'All requisition records for this division in the selected date range.',
+      loading: true,
+      columns: ['ID', 'Item', 'Qty (approved/requested)', 'Status', 'Requested by', 'Date'],
+    });
+    const token = getToken();
+    fetch('/api/requests', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        const rows = list
+          .filter((x) => String(x.division_id) === String(divisionId))
+          .map((x) => ({
+            ID: `#${x.id}`,
+            Item: x.item_name,
+            'Qty (approved/requested)': x.quantity_approved != null ? `${x.quantity_approved}/${x.quantity}` : String(x.quantity),
+            Status: x.status,
+            'Requested by': x.requester_name || x.username || '—',
+            Date: x.created_at ? new Date(x.created_at).toLocaleDateString() : '—',
+          }));
+        setDrill((prev) => (prev && prev.loading ? { ...prev, rows, loading: false } : prev));
+      })
+      .catch(() => setDrill((prev) => (prev && prev.loading ? { ...prev, rows: [], loading: false } : prev)));
+  };
+
+  const openProcurementStatusDrill = (statusLabel) => {
+    const rows = procurementRows
+      .filter((r) => r.status === statusLabel)
+      .map((r) => ({
+        '#': `#${r.procurement_id}`,
+        Division: r.division_name || '—',
+        Items: (r.items || []).map((i) => i.item_name).join(', ') || '—',
+        Supplier: r.supplier_name || '—',
+        Status: r.status,
+        Date: r.created_at ? new Date(r.created_at).toLocaleDateString() : '—',
+      }));
+    openDrill({
+      title: `Procurement requests — ${statusLabel}`,
+      subtitle: `All procurement requests currently at the "${statusLabel}" stage.`,
+      columns: ['#', 'Division', 'Items', 'Supplier', 'Status', 'Date'],
+      rows,
+    });
+  };
+
+  const openProcurementItemDrill = (itemName) => {
+    const rows = procurementRows
+      .filter((r) => (r.items || []).some((i) => i.item_name === itemName))
+      .map((r) => {
+        const mine = (r.items || []).filter((i) => i.item_name === itemName);
+        return {
+          '#': `#${r.procurement_id}`,
+          Division: r.division_name || '—',
+          Supplier: r.supplier_name || '—',
+          Requested: mine.reduce((s, i) => s + Number(i.quantity_requested || 0), 0),
+          Received: mine.reduce((s, i) => s + Number(i.quantity_received || 0), 0),
+          Status: r.status,
+        };
+      });
+    openDrill({
+      title: `Procurement history — ${itemName}`,
+      subtitle: 'Every procurement request that included this item, with requested and received quantities.',
+      columns: ['#', 'Division', 'Supplier', 'Requested', 'Received', 'Status'],
+      rows,
+    });
+  };
+
+  const openStockLevelDrill = (levelLabel) => {
+    const classify = (item) => {
+      const qty = Number(item.quantity_on_hand ?? item.quantity ?? 0);
+      const reorder = Number(item.reorder_level ?? item.reorder_point ?? 10);
+      if (qty <= 0) return 'Critical';
+      if (qty <= reorder) return 'Low';
+      return 'Sufficient';
+    };
+    const rows = normalizedInventory
+      .filter((item) => classify(item) === levelLabel)
+      .map((item) => ({
+        Item: item.name || item.item_name,
+        Category: item.category_name ?? (item.category || '—'),
+        'Units on Hand': Number(item.quantity ?? 0),
+        'Reorder Level': Number(item.reorder_level ?? item.reorder_point ?? 10),
+        'Unit Price': fmtPeso(item.unit_price ?? 0),
+      }))
+      .sort((a, b) => a['Units on Hand'] - b['Units on Hand']);
+    openDrill({
+      title: `${levelLabel} stock items`,
+      subtitle: 'Items currently at this stock level under the selected filters (qty ≤ 0 critical, ≤ reorder level low, otherwise sufficient).',
+      columns: ['Item', 'Category', 'Units on Hand', 'Reorder Level', 'Unit Price'],
+      rows,
+    });
+  };
+
+  const openCategoryDrill = (categoryName) => {
+    const rows = normalizedInventory
+      .filter((item) => (item.category_name ?? item.category) === categoryName)
+      .map((item) => ({
+        Item: item.name || item.item_name,
+        'Units on Hand': Number(item.quantity ?? 0),
+        'Reorder Level': Number(item.reorder_level ?? item.reorder_point ?? 10),
+        'Unit Price': fmtPeso(item.unit_price ?? 0),
+        'Stock Value': fmtPeso(Number(item.quantity ?? 0) * Number(item.unit_price ?? 0)),
+      }));
+    openDrill({
+      title: `Items in "${categoryName}"`,
+      subtitle: 'Every catalog item in this category with its current stock and value.',
+      columns: ['Item', 'Units on Hand', 'Reorder Level', 'Unit Price', 'Stock Value'],
+      rows,
+    });
+  };
+
+  const withChartClick = (options, onIndex) => ({
+    ...options,
+    onClick: (event, elements) => {
+      const el = elements && elements[0];
+      if (el) onIndex(el.index);
+    },
+  });
+
   const emptyDoughnut = (title) => (
     <p className="text-sm text-gray-400 flex items-center justify-center" style={{ height: 280 }}>{title}</p>
   );
@@ -755,16 +952,9 @@ export default function ReportsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <KpiCard label="Total Items" value={totalItems} />
-            <KpiCard label="Total Issued" value={totalIssued} />
-            <KpiCard label="Total Returned" value={totalReturned} />
-            <KpiCard
-              label="Total Value"
-              value={`₱${totalValue.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}`}
-            />
+            {tabKpis.map((kpi) => (
+              <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} sub={kpi.sub} />
+            ))}
           </div>
         )}
 
@@ -782,12 +972,19 @@ export default function ReportsPage() {
         ) : activeTab === 'inventory' ? (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Stock Status Distribution</h3>
+              <ChartCard
+                title="Stock Status Distribution"
+                description="Share of catalog items by stock level — how much of the catalogue is running low. Click a slice to list the items behind it."
+              >
                 {tabCharts.stockStatusChart.labels.length > 0 ? (
                   <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
                     <div className="flex-1 h-full min-w-0">
-                      <Doughnut data={tabCharts.stockStatusChart} options={doughnutChartOptions('bottom', false)} />
+                      <Doughnut
+                        data={tabCharts.stockStatusChart}
+                        options={withChartClick(doughnutChartOptions('bottom', false), (idx) =>
+                          openStockLevelDrill(tabCharts.stockStatusChart.labels[idx])
+                        )}
+                      />
                     </div>
                     <DoughnutPercentageLegend
                       labels={tabCharts.stockStatusChart.labels}
@@ -796,14 +993,21 @@ export default function ReportsPage() {
                     />
                   </div>
                 ) : emptyDoughnut('No inventory data')}
-              </div>
+              </ChartCard>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Inventory by Category</h3>
+              <ChartCard
+                title="Inventory by Category"
+                description="Units on hand per item category — which groups take up most of the warehouse. Click a slice to list the items behind it."
+              >
                 {tabCharts.categoryChart.labels.length > 0 ? (
                   <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
                     <div className="flex-1 h-full min-w-0">
-                      <Doughnut data={tabCharts.categoryChart} options={doughnutChartOptions('right', false)} />
+                      <Doughnut
+                        data={tabCharts.categoryChart}
+                        options={withChartClick(doughnutChartOptions('right', false), (idx) =>
+                          openCategoryDrill(tabCharts.categoryChart.labels[idx])
+                        )}
+                      />
                     </div>
                     <DoughnutPercentageLegend
                       labels={tabCharts.categoryChart.labels}
@@ -812,11 +1016,13 @@ export default function ReportsPage() {
                     />
                   </div>
                 ) : emptyDoughnut('No category data')}
-              </div>
+              </ChartCard>
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Division Inventory Summary</h3>
+            <ChartCard
+              title="Division Inventory Summary"
+              description="Relative share of distinct items, total units and stock value per division. Bars are normalized to 100%, so focus on proportions between divisions, not absolute amounts."
+            >
               {tabCharts.divisionDetailsChart.labels.length > 0 ? (
                 <div style={{ height: 300 }}>
                   <Bar data={tabCharts.divisionDetailsChart} options={divisionSummaryOptions} />
@@ -824,28 +1030,32 @@ export default function ReportsPage() {
               ) : (
                 <p className="text-sm text-gray-400 text-center" style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No division data</p>
               )}
-            </div>
+            </ChartCard>
           </>
         ) : activeTab === 'borrowing' ? (
           <>
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">
-                Division Consumption Analytics
-              </h3>
+            <ChartCard
+              title="Issued vs Returned by Division"
+              description="Units borrowed vs units given back per division in the selected period — who is consuming what. Click a division to see its top borrowed items."
+            >
               {tabCharts.divisionConsumption.labels.length > 0 ? (
                 <div style={{ height: 320 }}>
-                  <Bar data={tabCharts.divisionConsumption} options={barChartOptions()} />
+                  <Bar
+                    data={tabCharts.divisionConsumption}
+                    options={withChartClick(barChartOptions(), (idx) =>
+                      openDivisionItemDrill(tabCharts.divisionConsumption.labels[idx], tabCharts.divisionConsumption.datasets[0].label)
+                    )}
+                  />
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 text-center" style={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No borrow transactions</p>
               )}
-            </div>
+            </ChartCard>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">
-                Monthly Consumption Trend by Division
-                {dateRange.from || dateRange.to ? ` (${dateRange.from || 'start'} to ${dateRange.to || 'today'})` : ''}
-              </h3>
+            <ChartCard
+              title={`Monthly Consumption Trend by Division${dateRange.from || dateRange.to ? ` (${dateRange.from || 'start'} to ${dateRange.to || 'today'})` : ''}`}
+              description="Units issued per month, one line per division — watch for spikes (mass borrowing) or dips (seasonality). Click a division in the legend to isolate its line."
+            >
               {tabCharts.monthlyTrend.labels.length > 0 ? (
                 <div style={{ height: 280 }}>
                   <Line data={tabCharts.monthlyTrend} options={barChartOptions()} />
@@ -853,11 +1063,13 @@ export default function ReportsPage() {
               ) : (
                 <p className="text-sm text-gray-400 text-center" style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No trend data</p>
               )}
-            </div>
+            </ChartCard>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Top Items by Issuance</h3>
+              <ChartCard
+                title="Top Issued Items"
+                description="Most borrowed items across every division matching the current filters — the wider the bar, the more borrow transactions. Compare with the table on the right for opening/closing balances."
+              >
                 <div className="space-y-3">
                   {topItems.length === 0 ? (
                     <p className="text-sm text-gray-400">No transaction data available</p>
@@ -882,7 +1094,7 @@ export default function ReportsPage() {
                     })
                   )}
                 </div>
-              </div>
+              </ChartCard>
 
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100">
@@ -941,23 +1153,37 @@ export default function ReportsPage() {
         ) : (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Requisition Analytics</h3>
+              <ChartCard
+                title="Requisition Status by Division"
+                description="How many requests per division are Pending, Approved, Released or Rejected. Click a division to list its requisitions."
+              >
                 {tabCharts.requisitionChart.labels.length > 0 ? (
                   <div style={{ height: 280 }}>
-                    <Bar data={tabCharts.requisitionChart} options={barChartOptions()} />
+                    <Bar
+                      data={tabCharts.requisitionChart}
+                      options={withChartClick(barChartOptions(), (idx) =>
+                        openRequisitionDrill(tabCharts.requisitionChart.labels[idx])
+                      )}
+                    />
                   </div>
                 ) : (
                   <p className="text-sm text-gray-400 text-center" style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No requisition data</p>
                 )}
-              </div>
+              </ChartCard>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Procurement Status Distribution</h3>
+              <ChartCard
+                title="Procurement Status Distribution"
+                description="Where procurement requests currently sit: Pending → Approved → Received, plus Released/Cancelled. Click a segment to list the requests at that stage."
+              >
                 {procurementStatusChart.labels.length > 0 ? (
                   <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
                     <div className="flex-1 h-full min-w-0">
-                      <Doughnut data={procurementStatusChart} options={doughnutChartOptions('bottom', false)} />
+                      <Doughnut
+                        data={procurementStatusChart}
+                        options={withChartClick(doughnutChartOptions('bottom', false), (idx) =>
+                          openProcurementStatusDrill(procurementStatusChart.labels[idx])
+                        )}
+                      />
                     </div>
                     <DoughnutPercentageLegend
                       labels={procurementStatusChart.labels}
@@ -966,14 +1192,13 @@ export default function ReportsPage() {
                     />
                   </div>
                 ) : emptyDoughnut('No procurement data')}
-              </div>
+              </ChartCard>
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-1">Predicted Maximum Requests per Division</h3>
-              <p className="text-xs text-gray-400 mb-4">
-                Estimated request volume for the next month based on the last 6 months of requisitions and borrow requests.
-              </p>
+            <ChartCard
+              title="Predicted Maximum Requests per Division"
+              description="Estimated request volume for the next month based on the last 6 months of requisitions and borrow requests — use 'Predicted Max' to size next month's stocking decisions."
+            >
               {requestForecastChart.labels.length === 0 ? (
                 <p className="text-sm text-gray-400 py-8 text-center">No request history yet</p>
               ) : (
@@ -1005,18 +1230,25 @@ export default function ReportsPage() {
                   </table>
                 </div>
               )}
-            </div>
+            </ChartCard>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Requested vs Received per Item</h3>
+            <ChartCard
+              title="Requested vs Received per Item"
+              description="What was ordered from suppliers vs what actually arrived — a gap between the bars signals unfulfilled deliveries. Click a bar to view every request that included the item."
+            >
               {procurementQtyChart.labels.length > 0 ? (
                 <div style={{ height: 300 }}>
-                  <Bar data={procurementQtyChart} options={barChartOptions()} />
+                  <Bar
+                    data={procurementQtyChart}
+                    options={withChartClick(barChartOptions(), (idx) =>
+                      openProcurementItemDrill(procurementQtyChart.labels[idx])
+                    )}
+                  />
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 text-center" style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No procurement items</p>
               )}
-            </div>
+            </ChartCard>
           </>
         )}
 
@@ -1124,6 +1356,63 @@ export default function ReportsPage() {
             <button onClick={() => setExpandedCell(null)} className="text-gray-400 hover:text-gray-600 ml-4 text-lg leading-none">&times;</button>
           </div>
           {expandedCell.text}
+        </div>
+      </div>
+    )}
+    {drill && (
+      <div
+        className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
+        onClick={() => setDrill(null)}
+      >
+        <div
+          className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">{drill.title}</h2>
+              {drill.subtitle ? (
+                <p className="text-xs text-gray-400 mt-1 leading-4">{drill.subtitle}</p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => setDrill(null)}
+              className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+            >
+              &times;
+            </button>
+          </div>
+          <div className="px-6 py-4 overflow-auto">
+            {drill.loading ? (
+              <p className="text-sm text-gray-400 text-center py-10">Loading details…</p>
+            ) : drill.rows.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-10">No records found for this selection within the current filters.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-left text-xs font-semibold text-gray-500">
+                      {drill.columns.map((c) => (
+                        <th key={c} className="py-2 pr-4 whitespace-nowrap">{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {drill.rows.map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        {drill.columns.map((c) => (
+                          <td key={c} className="py-2 pr-4 text-gray-700 whitespace-nowrap">
+                            {row[c]}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     )}
