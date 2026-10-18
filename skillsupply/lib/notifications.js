@@ -30,8 +30,8 @@ export const NOTIFICATION_LINKS = {
   BORROW_DELETED: '/borrow',
   RETURN_REQUESTED: '/transactions',
   RETURN_COMPLETED: '/transactions',
-  PROCUREMENT_CREATED: '/procurement',
-  PROCUREMENT_STATUS: '/procurement',
+  PROCUREMENT_CREATED: '/requisitions',
+  PROCUREMENT_STATUS: '/requisitions',
   PROCUREMENT_RECEIVED: '/inventory',
   LOW_STOCK: '/inventory'
 };

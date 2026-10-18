@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
 import { broadcastRequisitionUpdate } from '../../lib/events';
+import ProcurementModule from '../../components/ProcurementModule';
 
 export default function RequisitionsPage() {
   const searchParams = useSearchParams();
@@ -276,6 +277,10 @@ export default function RequisitionsPage() {
             </div>
           )}
         </div>
+
+        {/* Procurement section */}
+        <hr className="border-gray-200" />
+        <ProcurementModule />
 
       {/* Review Modal */}
       {selectedReq && (
