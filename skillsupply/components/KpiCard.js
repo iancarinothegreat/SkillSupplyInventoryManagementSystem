@@ -1,6 +1,6 @@
 'use client';
 
-export default function KpiCard({ label, value, onClick }) {
+export default function KpiCard({ label, value, sub, onClick }) {
   return (
     <div
       onClick={onClick}
@@ -12,6 +12,9 @@ export default function KpiCard({ label, value, onClick }) {
       <p className="text-3xl font-bold text-[#1f2d42] leading-none">
         {value}
       </p>
+      {sub ? (
+        <p className="text-[11px] text-gray-400 leading-4 mt-1.5">{sub}</p>
+      ) : null}
     </div>
   );
 }

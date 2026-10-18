@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import KpiCard from '../../components/KpiCard';
-import { SkeletonKpiCard, SkeletonTableRow } from '../../components/Skeleton';
+import KpiCard from './KpiCard';
+import Pagination from './Pagination';
 
 const STATUS_STYLES = {
   Pending: 'bg-yellow-100 text-yellow-800',
@@ -14,7 +14,7 @@ const STATUS_STYLES = {
 
 const TABLE_HEADERS = ['ID', 'Division', 'Items', 'Supplier', 'Status', 'Date', 'Action'];
 
-export default function ProcurementPage() {
+export default function ProcurementModule() {
   const searchParams = useSearchParams();
   const refId = searchParams?.get('ref');
   const openedRef = useRef(null);
@@ -28,6 +28,7 @@ export default function ProcurementPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({
     division_id: '',
@@ -73,6 +74,11 @@ export default function ProcurementPage() {
   const pendingCount = requests.filter((r) => r.status === 'Pending').length;
   const approvedCount = requests.filter((r) => r.status === 'Approved').length;
   const receivedCount = requests.filter((r) => r.status === 'Received').length;
+
+  const procPageSize = 10;
+  const procPageCount = Math.max(1, Math.ceil(filtered.length / procPageSize));
+  const procPage = Math.min(page, procPageCount);
+  const pagedRequests = filtered.slice((procPage - 1) * procPageSize, procPage * procPageSize);
 
   const openCreate = () => {
     setForm({ division_id: '', justification: '', supplier_name: '', reference_number: '', notes: '', items: [{ item_id: '', quantity_requested: '', unit_cost: '' }] });
@@ -132,7 +138,7 @@ export default function ProcurementPage() {
   useEffect(() => {
     if (!refId || openedRef.current === refId) return;
     const r = requests.find((x) => String(x.procurement_id) === String(refId));
-    if (r && !loading) {
+    if (r && !loading && requests.length > 0) {
       openedRef.current = refId;
       setFilterStatus('all');
       openReview(r);
@@ -164,24 +170,11 @@ export default function ProcurementPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[0, 1, 2].map((i) => <SkeletonKpiCard key={i} />)}
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-3">
-          {[0, 1, 2, 3].map((i) => <SkeletonTableRow key={i} />)}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Procurement</h1>
+          <h2 className="text-2xl font-bold text-gray-900">Procurement</h2>
           <p className="text-sm text-gray-500 mt-1">Plan and track procurement requests for low-stock items</p>
         </div>
         <button
@@ -208,7 +201,7 @@ export default function ProcurementPage() {
           {['all', 'Pending', 'Approved', 'Received', 'Rejected', 'Cancelled'].map((s) => (
             <button
               key={s}
-              onClick={() => setFilterStatus(s)}
+              onClick={() => { setFilterStatus(s); setPage(1); }}
               className={`text-xs px-3 py-1.5 rounded-lg font-medium transition ${filterStatus === s ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             >
               {s === 'all' ? 'All' : s}
@@ -233,7 +226,7 @@ export default function ProcurementPage() {
                   </td>
                 </tr>
               )}
-              {filtered.map((r) => (
+              {pagedRequests.map((r) => (
                 <tr key={r.procurement_id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">#{r.procurement_id}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">{r.division_name || '—'}</td>
@@ -266,6 +259,12 @@ export default function ProcurementPage() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={procPage}
+          pageSize={procPageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+        />
       </div>
 
       {showModal && (

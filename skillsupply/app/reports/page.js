@@ -1,49 +1,70 @@
-  'use client';
+﻿  'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
-import { SkeletonKpiCard, SkeletonChart, SkeletonTableRow } from '@/components/Skeleton';
+import { SkeletonKpiCard, SkeletonChart } from '@/components/Skeleton';
+import Pagination from '@/components/Pagination';
+import ChartCard from '@/components/ChartCard';
+import DrillModal from '@/components/DrillModal';
+import html2canvas from 'html2canvas-pro';
+import { jsPDF } from 'jspdf';
+import {
+  COLORS,
+  buildAnalyticsCharts,
+  barChartOptions,
+  doughnutChartOptions,
+  DoughnutPercentageLegend
+} from '@/components/AnalyticsShared';
 import * as XLSX from 'xlsx';
-import { Line } from 'react-chartjs-2';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   LineElement,
   PointElement,
+  BarElement,
+  ArcElement,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, BarElement, ArcElement, Tooltip, Legend, Filler);
+
+const TABS = [
+  { value: 'inventory', label: 'Inventory' },
+  { value: 'borrowing', label: 'Borrowing' },
+  { value: 'requisitions', label: 'Requisition & Procurement' },
+];
 
 const REPORT_TYPES = [
-  { group: 'Inventory', value: 'inventory', label: 'Inventory Status' },
-  { group: 'Inventory', value: 'inventory_value', label: 'Inventory Valuation' },
-  { group: 'Inventory', value: 'lowstock', label: 'Critical Reorder Report' },
-  { group: 'Inventory', value: 'outofstock', label: 'Critical Stock' },
-  { group: 'Inventory', value: 'inventory_category', label: 'Inventory by Category' },
-  { group: 'Inventory', value: 'inventory_division', label: 'Inventory by Division' },
-  { group: 'Inventory', value: 'defective', label: 'Defective Stock' },
-  { group: 'Inventory', value: 'item_detail', label: 'Item Detail' },
-  { group: 'Transactions', value: 'transactions', label: 'Transaction Log' },
-  { group: 'Transactions', value: 'returns', label: 'Returns Report' },
-  { group: 'Transactions', value: 'overdue', label: 'Overdue Items' },
-  { group: 'Transactions', value: 'borrowed', label: 'Currently Borrowed' },
-  { group: 'Consumption', value: 'consumption', label: 'Consumption by Item' },
-  { group: 'Consumption', value: 'most_used', label: 'Most Used Items' },
-  { group: 'Consumption', value: 'least_used', label: 'Least Used Items' },
-  { group: 'Consumption', value: 'monthly_trend', label: 'Monthly Issued vs Returned' },
-  { group: 'Requisitions', value: 'requisitions', label: 'Requisition Status' },
-  { group: 'Requisitions', value: 'requisition_status', label: 'Requisitions by Status' },
-  { group: 'Requisitions', value: 'requisition_division', label: 'Requisitions by Division' },
-  { group: 'Requisitions', value: 'requisition_approval', label: 'Approval Time' },
-  { group: 'Requisitions', value: 'requisition_purpose', label: 'Purpose Analysis' },
-  { group: 'Forecasting', value: 'forecast', label: 'Demand Forecast' },
-  { group: 'Forecasting', value: 'forecast_risk', label: 'Forecast Risk' },
-  { group: 'Administration', value: 'audit', label: 'Audit Trail' },
-  { group: 'Administration', value: 'login_audit', label: 'Login Audit Logs' },
+  { group: 'Inventory', tab: 'inventory', value: 'inventory', label: 'Inventory Status' },
+  { group: 'Inventory', tab: 'inventory', value: 'inventory_value', label: 'Inventory Valuation' },
+  { group: 'Inventory', tab: 'inventory', value: 'lowstock', label: 'Critical Reorder Report' },
+  { group: 'Inventory', tab: 'inventory', value: 'outofstock', label: 'Critical Stock' },
+  { group: 'Inventory', tab: 'inventory', value: 'inventory_category', label: 'Inventory by Category' },
+  { group: 'Inventory', tab: 'inventory', value: 'inventory_division', label: 'Inventory by Division' },
+  { group: 'Inventory', tab: 'inventory', value: 'defective', label: 'Defective Stock' },
+  { group: 'Inventory', tab: 'inventory', value: 'item_detail', label: 'Item Detail' },
+  { group: 'Transactions', tab: 'borrowing', value: 'transactions', label: 'Transaction Log' },
+  { group: 'Transactions', tab: 'borrowing', value: 'returns', label: 'Returns Report' },
+  { group: 'Transactions', tab: 'borrowing', value: 'overdue', label: 'Overdue Items' },
+  { group: 'Transactions', tab: 'borrowing', value: 'borrowed', label: 'Currently Borrowed' },
+  { group: 'Consumption', tab: 'borrowing', value: 'consumption', label: 'Consumption by Item' },
+  { group: 'Consumption', tab: 'borrowing', value: 'most_used', label: 'Most Used Items' },
+  { group: 'Consumption', tab: 'borrowing', value: 'least_used', label: 'Least Used Items' },
+  { group: 'Consumption', tab: 'borrowing', value: 'monthly_trend', label: 'Monthly Issued vs Returned' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisitions', label: 'Requisition Status' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisition_status', label: 'Requisitions by Status' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisition_division', label: 'Requisitions by Division' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisition_approval', label: 'Approval Time' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisition_purpose', label: 'Purpose Analysis' },
+  { group: 'Forecasting', tab: 'requisitions', value: 'forecast', label: 'Demand Forecast' },
+  { group: 'Forecasting', tab: 'requisitions', value: 'forecast_risk', label: 'Forecast Risk' },
+  { group: 'Administration', tab: 'all', value: 'audit', label: 'Audit Trail' },
+  { group: 'Administration', tab: 'all', value: 'login_audit', label: 'Login Audit Logs' },
 ];
 
 function formatAuditValue(val, categories, divisions) {
@@ -82,10 +103,11 @@ export default function ReportsPage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [fullTableMode, setFullTableMode] = useState(false);
+  const tabContentRef = useRef(null);
   const [selectedReport, setSelectedReport] = useState(initialReport);
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [selectedDivision, setSelectedDivision] = useState('all');
-  const [monthlyChart, setMonthlyChart] = useState({ labels: [], datasets: [] });
   const [reportRows, setReportRows] = useState([]);
   const [reportTitle, setReportTitle] = useState('Inventory Status');
   const [reportLoading, setReportLoading] = useState(false);
@@ -96,6 +118,13 @@ export default function ReportsPage() {
   const [auditAction, setAuditAction] = useState('all');
   const [auditSort, setAuditSort] = useState('timestamp');
   const [auditOrder, setAuditOrder] = useState('DESC');
+  const [reportPage, setReportPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('inventory');
+  const [analyticsCharts, setAnalyticsCharts] = useState(null);
+  const [analyticsRaw, setAnalyticsRaw] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [procurementRows, setProcurementRows] = useState([]);
+  const [forecastRows, setForecastRows] = useState([]);
 
   const getToken = () => {
     if (typeof window === 'undefined') return '';
@@ -126,12 +155,11 @@ export default function ReportsPage() {
   const fetchData = useCallback(async () => {
     try {
       const token = getToken();
-      const [invRes, txRes, divRes, categoryRes, monthlyRes] = await Promise.all([
+      const [invRes, txRes, divRes, categoryRes] = await Promise.all([
         fetch('/api/inventory', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/transactions', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/divisions', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/categories', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/dashboard/monthly-trend', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/categories', { headers: { Authorization: `Bearer ${token}` } })
       ]);
       if (invRes.ok) setInventory(await invRes.json());
       if (txRes.ok) setTransactions(await txRes.json());
@@ -142,42 +170,6 @@ export default function ReportsPage() {
       if (categoryRes.ok) {
         const categoryData = await categoryRes.json();
         setCategories(Array.isArray(categoryData) ? categoryData : categoryData.categories || []);
-      }
-      if (monthlyRes.ok) {
-        const monthlyData = await monthlyRes.json();
-        if (Array.isArray(monthlyData) && monthlyData.length > 0) {
-          setMonthlyChart({
-            labels: monthlyData.map(d => d.month),
-            datasets: [
-              {
-                label: 'Issued',
-                data: monthlyData.map(d => d.issued),
-                borderColor: '#1e40af',
-                backgroundColor: '#1e40af',
-                tension: 0.3,
-                pointRadius: 4,
-                pointHoverRadius: 6
-              },
-              {
-                label: 'Returned',
-                data: monthlyData.map(d => d.returned),
-                borderColor: '#16a34a',
-                backgroundColor: '#16a34a',
-                tension: 0.3,
-                pointRadius: 4,
-                pointHoverRadius: 6
-              }
-            ]
-          });
-        } else {
-          setMonthlyChart({
-            labels: ['No Data'],
-            datasets: [
-              { label: 'Issued', data: [0], borderColor: '#1e40af', backgroundColor: '#1e40af', tension: 0.3, pointRadius: 4 },
-              { label: 'Returned', data: [0], borderColor: '#16a34a', backgroundColor: '#16a34a', tension: 0.3, pointRadius: 4 }
-            ]
-          });
-        }
       }
     } catch (err) {
       console.error(err);
@@ -229,36 +221,141 @@ export default function ReportsPage() {
     queueMicrotask(fetchReport);
   }, [fetchReport]);
 
-  const handleExportPDF = async () => {
-    setExporting(true);
+  useEffect(() => {
+    setReportPage(1);
+  }, [selectedReport, selectedDivision, selectedCategory, selectedStatus, dateRange, auditSearch, auditAction, auditOrder]);
+
+  const fetchTabCharts = useCallback(async () => {
+    setAnalyticsLoading(true);
     try {
       const token = getToken();
-      const params = new URLSearchParams({
-        report: selectedReport,
-        ...dateRange,
-        ...(dateRange.to ? { to: `${dateRange.to}T23:59:59` } : {}),
-        division: selectedDivision,
-        category: selectedCategory,
-        status: selectedStatus,
-        format: 'pdf',
-      });
-      const res = await fetch(`/api/reports/data?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `SkillSupply_${selectedReport}_${new Date().toISOString().slice(0, 10)}.pdf`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-      } else {
-        alert('Export failed. Please try again.');
+      const params = new URLSearchParams();
+      if (dateRange.from) params.set('from', dateRange.from);
+      if (dateRange.to) params.set('to', `${dateRange.to}T23:59:59`);
+      if (selectedDivision !== 'all') params.set('division_id', selectedDivision);
+      if (selectedCategory !== 'all') params.set('category_id', selectedCategory);
+      if (selectedStatus !== 'all' && selectedStatus !== 'Critical' && selectedStatus !== 'Low Stock' && selectedStatus !== 'In Stock') {
+        params.set('status', selectedStatus);
       }
+
+      const jobs = [fetch(`/api/dashboard/analytics?${params}`, { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } })];
+      if (activeTab === 'requisitions') {
+        jobs.push(fetch('/api/procurement', { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } }));
+        jobs.push(fetch(`/api/dashboard/request-forecast?${params}`, { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } }));
+      }
+      const [analyticsRes, procurementRes, forecastRes] = await Promise.all(jobs);
+
+      const safeJson = async (res) => {
+        const text = await res.text();
+        try { return JSON.parse(text); } catch { return {}; }
+      };
+      const analytics = await safeJson(analyticsRes);
+      setAnalyticsCharts(buildAnalyticsCharts(analytics || {}));
+      setAnalyticsRaw(analytics || {});
+
+      if (activeTab === 'requisitions') {
+        const procData = await safeJson(procurementRes);
+        setProcurementRows(Array.isArray(procData) ? procData : (procData.rows || []));
+        const forecastData = await safeJson(forecastRes);
+        setForecastRows(Array.isArray(forecastData) ? forecastData : (forecastData.rows || []));
+      }
+    } catch (err) {
+      console.error(err);
+      setAnalyticsCharts(buildAnalyticsCharts({}));
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [activeTab, dateRange, selectedDivision, selectedCategory, selectedStatus]);
+
+  useEffect(() => {
+    queueMicrotask(fetchTabCharts);
+  }, [fetchTabCharts]);
+
+  // Keep the selected report type valid for the active tab
+  useEffect(() => {
+    const belongs = REPORT_TYPES.some((r) => r.value === selectedReport && (r.tab === activeTab || r.tab === 'all'));
+    if (!belongs) {
+      const first = REPORT_TYPES.find((r) => r.tab === activeTab);
+      if (first) setSelectedReport(first.value);
+    }
+  }, [activeTab, selectedReport]);
+
+  const handleExportPDF = async () => {
+    if (exporting || loading || reportLoading || analyticsLoading) return;
+    setExporting(true);
+    try {
+      // Render ALL report rows (bypass pagination) and let React paint before capture
+      if (reportRows.length > reportPageSize) {
+        setFullTableMode(true);
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      await new Promise((r) => setTimeout(r, 100));
+
+      const node = tabContentRef.current;
+      if (!node) throw new Error('Nothing to export');
+      const canvas = await html2canvas(node, {
+        scale: node.scrollHeight > 6000 ? 1.5 : 2,
+        backgroundColor: '#f3f4f6',
+        useCORS: true,
+      });
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageW = 210;
+      const pageH = 297;
+      const margin = 8;
+      const headerMm = 16;
+      const imgW = pageW - margin * 2;
+      const pxPerMm = canvas.width / imgW;
+
+      const divisionLabel = selectedDivision === 'all'
+        ? 'All divisions'
+        : (divisions.find((d) => String(d.division_id) === String(selectedDivision))?.division_name || selectedDivision);
+      const categoryLabel = selectedCategory === 'all'
+        ? 'All categories'
+        : (categories.find((c) => String(c.category_id) === String(selectedCategory))?.category_name || selectedCategory);
+      const tabLabel = activeTab === 'inventory' ? 'Inventory' : activeTab === 'borrowing' ? 'Borrowing' : 'Requisition & Procurement';
+
+      let remaining = canvas.height;
+      let pageIndex = 0;
+      while (remaining > 0) {
+        const availMm = pageH - margin * 2 - (pageIndex === 0 ? headerMm : 0);
+        const takePx = Math.min(Math.floor(availMm * pxPerMm), remaining);
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = takePx;
+        const ctx = pageCanvas.getContext('2d');
+        ctx.fillStyle = '#f3f4f6';
+        ctx.fillRect(0, 0, pageCanvas.width, takePx);
+        ctx.drawImage(canvas, 0, canvas.height - remaining, canvas.width, takePx, 0, 0, canvas.width, takePx);
+        const imgData = pageCanvas.toDataURL('image/jpeg', 0.92);
+        if (pageIndex > 0) pdf.addPage();
+        if (pageIndex === 0) {
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(14);
+          pdf.text('SkillSupply Inventory Management System', margin, margin + 3);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(11);
+          pdf.text(reportTitle, margin, margin + 9);
+          pdf.setFontSize(8);
+          pdf.text(
+            `Generated: ${new Date().toLocaleString('en-PH')}  |  Analytics tab: ${tabLabel}  |  Period: ${dateRange.from || 'start'} to ${dateRange.to || 'today'}  |  Division: ${divisionLabel}  |  Category: ${categoryLabel}  |  Status: ${selectedStatus === 'all' ? 'All' : selectedStatus}`,
+            margin,
+            margin + 13,
+            { maxWidth: imgW }
+          );
+          pdf.addImage(imgData, 'JPEG', margin, margin + headerMm, imgW, takePx / pxPerMm);
+        } else {
+          pdf.addImage(imgData, 'JPEG', margin, margin, imgW, takePx / pxPerMm);
+        }
+        remaining -= takePx;
+        pageIndex += 1;
+      }
+
+      pdf.save(`SkillSupply_${tabLabel.replace(/[^a-zA-Z0-9]+/g, '-')}_${reportTitle.replace(/[^a-zA-Z0-9]+/g, '-')}_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (err) {
       alert('Export error: ' + err.message);
     } finally {
+      setFullTableMode(false);
       setExporting(false);
     }
   };
@@ -309,26 +406,34 @@ export default function ReportsPage() {
     };
   });
 
-  // Filter transactions by date and division
+  // Apply global filters to client-side datasets so KPIs, tables and drill-downs stay consistent
+  const filteredInventory = normalizedInventory.filter((item) => {
+    if (selectedDivision !== 'all' && String(item.division_id) !== String(selectedDivision)) return false;
+    if (selectedCategory !== 'all' && String(item.category_id) !== String(selectedCategory)) return false;
+    return true;
+  });
+
+  const normalizeTxStatus = (s) => (s === 'Active' || s === 'Issued' ? 'Borrowed' : s);
+  const statusFilterActive = selectedStatus !== 'all' && !['Critical', 'Low Stock', 'In Stock'].includes(selectedStatus);
+
+  // Filter transactions by date, division and status
   const filteredTransactions = transactions.filter((t) => {
-    if (!dateRange.from && !dateRange.to && selectedDivision === 'all') return true;
-    const d = new Date(t.borrow_date);
+    const d = new Date(t.borrow_date || t.created_at);
     if (dateRange.from && d < new Date(dateRange.from)) return false;
-    if (dateRange.to && d > new Date(dateRange.to)) return false;
-    if (selectedDivision !== 'all' && String(t.borrower_division_id) !== String(selectedDivision))
-      return false;
+    if (dateRange.to && d > new Date(`${dateRange.to}T23:59:59`)) return false;
+    if (selectedDivision !== 'all' && String(t.division_id) !== String(selectedDivision)) return false;
+    if (statusFilterActive && normalizeTxStatus(t.status) !== normalizeTxStatus(selectedStatus)) return false;
     return true;
   });
 
   // Calculate KPIs
-  const totalItems = normalizedInventory.length;
   const totalIssued = filteredTransactions
     .filter((t) => t.status !== 'Returned')
     .reduce((sum, t) => sum + Number(t.quantity_borrowed ?? t.quantity ?? 0), 0);
   const totalReturned = filteredTransactions
     .filter((t) => t.status === 'Returned')
     .reduce((sum, t) => sum + Number(t.quantity_borrowed ?? t.quantity ?? 0), 0);
-  const totalValue = normalizedInventory.reduce(
+  const totalValue = filteredInventory.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
     0
   );
@@ -365,7 +470,7 @@ export default function ReportsPage() {
   });
   const consumption = Object.values(consumptionData)
     .map((row) => {
-      const inventoryItem = normalizedInventory.find(
+      const inventoryItem = filteredInventory.find(
         (item) => (item.item_name ?? item.name) === row.item_name
       );
       const currentStock = Number(inventoryItem?.quantity ?? 0);
@@ -383,6 +488,323 @@ export default function ReportsPage() {
       };
     })
     .slice(0, 10);
+
+  const reportPageSize = 10;
+  const reportPageCount = Math.max(1, Math.ceil(reportRows.length / reportPageSize));
+  const reportCurrentPage = Math.min(reportPage, reportPageCount);
+  const pagedReportRows = reportRows.slice(
+    (reportCurrentPage - 1) * reportPageSize,
+    reportCurrentPage * reportPageSize
+  );
+
+  const tabCharts = analyticsCharts || {
+    divisionConsumption: { labels: [], datasets: [] },
+    divisionDetails: [],
+    divisionDetailsChart: { labels: [], datasets: [] },
+    monthlyTrend: { labels: [], datasets: [] },
+    categoryChart: { labels: [], datasets: [] },
+    stockStatusChart: { labels: [], datasets: [] },
+    requisitionChart: { labels: [], datasets: [] },
+  };
+
+  // Global filters applied to procurement rows (division, date)
+  const divisionIdByName = Object.fromEntries(divisions.map((d) => [d.division_name, d.division_id]));
+  const divisionNameById = Object.fromEntries(divisions.map((d) => [String(d.division_id), d.division_name]));
+  const filteredProcurementRows = procurementRows.filter((r) => {
+    const rDivisionId = r.division_id != null ? r.division_id : divisionIdByName[r.division_name];
+    if (selectedDivision !== 'all' && String(rDivisionId) !== String(selectedDivision)) return false;
+    const d = new Date(r.created_at || r.requested_date);
+    if (dateRange.from && d < new Date(dateRange.from)) return false;
+    if (dateRange.to && d > new Date(`${dateRange.to}T23:59:59`)) return false;
+    return true;
+  });
+
+  const procurementStatusCounts = {
+    Pending: filteredProcurementRows.filter((r) => r.status === 'Pending').length,
+    Approved: filteredProcurementRows.filter((r) => r.status === 'Approved').length,
+    Received: filteredProcurementRows.filter((r) => r.status === 'Received').length,
+    Rejected: filteredProcurementRows.filter((r) => r.status === 'Rejected').length,
+    Cancelled: filteredProcurementRows.filter((r) => r.status === 'Cancelled').length,
+  };
+  const procurementStatusChart = {
+    labels: Object.keys(procurementStatusCounts).filter((k) => procurementStatusCounts[k] > 0),
+    datasets: [{
+      data: Object.keys(procurementStatusCounts).filter((k) => procurementStatusCounts[k] > 0).map((k) => procurementStatusCounts[k]),
+      backgroundColor: [COLORS.yellow, COLORS.blue, COLORS.green, COLORS.red, '#9ca3af'].filter(
+        (_, i) => procurementStatusCounts[['Pending', 'Approved', 'Received', 'Rejected', 'Cancelled'][i]] > 0
+      ),
+      borderWidth: 0
+    }]
+  };
+
+  const procurementQty = {};
+  filteredProcurementRows.forEach((r) => {
+    (r.items || []).forEach((it) => {
+      if (!procurementQty[it.item_name]) {
+        procurementQty[it.item_name] = { requested: 0, received: 0 };
+      }
+      procurementQty[it.item_name].requested += Number(it.quantity_requested || 0);
+      procurementQty[it.item_name].received += Number(it.quantity_received || 0);
+    });
+  });
+  const procurementQtyTop = Object.entries(procurementQty)
+    .sort((a, b) => b[1].requested - a[1].requested)
+    .slice(0, 8);
+  const procurementQtyChart = {
+    labels: procurementQtyTop.map(([name]) => name),
+    datasets: [
+      { label: 'Requested', data: procurementQtyTop.map(([, v]) => v.requested), backgroundColor: COLORS.yellow, borderRadius: 4 },
+      { label: 'Received', data: procurementQtyTop.map(([, v]) => v.received), backgroundColor: COLORS.green, borderRadius: 4 }
+    ]
+  };
+
+  const requestForecastChart = {
+    labels: forecastRows.map(d => d.division),
+    datasets: [
+      {
+        label: 'Historical Requests (avg/month)',
+        data: forecastRows.map(d => Number(d.historical_avg || 0)),
+        backgroundColor: COLORS.blue,
+        borderRadius: 4
+      },
+      {
+        label: 'Predicted Max Requests (next month)',
+        data: forecastRows.map(d => Number(d.predicted_max || 0)),
+        backgroundColor: COLORS.orange,
+        borderRadius: 4
+      }
+    ]
+  };
+
+  const divisionSummaryOptions = {
+    ...barChartOptions(),
+    indexAxis: 'y',
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            const division = tabCharts.divisionDetails[context.dataIndex];
+            if (!division) return '';
+            const label = context.dataset.label;
+            if (label === 'Items') return `Items: ${division.totalItems}`;
+            if (label === 'Quantity') return `Quantity: ${division.totalQuantity.toLocaleString()}`;
+            if (label === 'Value') return `Value: ₱${Number(division.totalValue || 0).toLocaleString('en-PH')}`;
+            return '';
+          }
+        }
+      }
+    },
+    scales: {
+      x: { beginAtZero: true, max: 100, ticks: { callback: (v) => v + '%' } },
+      y: { ticks: { font: { size: 12 } } }
+    }
+  };
+
+  const [drill, setDrill] = useState(null);
+
+  const fmtPeso = (n) => `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const analyticsK = analyticsRaw && analyticsRaw.kpis ? analyticsRaw.kpis : {};
+  const requisitionTotals = Array.isArray(analyticsRaw && analyticsRaw.requisitions)
+    ? analyticsRaw.requisitions.reduce((acc, r) => ({
+        pending: acc.pending + Number(r.pending || 0),
+        approved: acc.approved + Number(r.approved || 0),
+        released: acc.released + Number(r.released || 0),
+      }), { pending: 0, approved: 0, released: 0 })
+    : null;
+
+  const unitsOnHand = filteredInventory.reduce((s, i) => s + Number(i.quantity || 0), 0);
+
+  const pendingProcurement = filteredProcurementRows.filter((r) => r.status === 'Pending').length;
+  const estProcurementCost = filteredProcurementRows.reduce(
+    (sum, r) => sum + (r.items || []).reduce((s, it) => s + Number(it.quantity_requested || 0) * Number(it.unit_cost || 0), 0),
+    0
+  );
+
+  const tabKpis = activeTab === 'inventory' ? [
+    { label: 'Total Items', value: analyticsK.totalItems ?? '—', sub: 'Distinct catalog items' },
+    { label: 'Units on Hand', value: unitsOnHand.toLocaleString(), sub: 'Sum of current stock across all items' },
+    { label: 'Critical Stock', value: analyticsK.lowStock ?? '—', sub: 'Items at or below reorder level' },
+    { label: 'Inventory Value', value: fmtPeso(totalValue), sub: 'Current stock × unit cost' },
+  ] : activeTab === 'borrowing' ? [
+    { label: 'Total Issued', value: totalIssued.toLocaleString(), sub: 'Units borrowed (not yet returned) in period' },
+    { label: 'Total Returned', value: totalReturned.toLocaleString(), sub: 'Units returned in period' },
+    { label: 'Items On Loan', value: analyticsK.itemsOnLoan ?? '—', sub: 'Currently borrowed, unreturned' },
+    { label: 'Return Rate', value: analyticsK.returnRate != null ? `${analyticsK.returnRate}%` : '—', sub: 'Returned vs issued units' },
+  ] : [
+    { label: 'Pending Requisitions', value: requisitionTotals ? requisitionTotals.pending : '—', sub: 'Across divisions, awaiting action' },
+    { label: 'Approved / Released', value: requisitionTotals ? `${requisitionTotals.approved} / ${requisitionTotals.released}` : '—', sub: 'Requisition statuses to date' },
+    { label: 'Pending Procurement', value: pendingProcurement, sub: 'Supplier requests awaiting action' },
+    { label: 'Est. Procurement Cost', value: fmtPeso(estProcurementCost), sub: 'Requested qty × unit cost' },
+  ];
+
+  const openDrill = (def) => setDrill({
+    title: def.title,
+    subtitle: def.subtitle,
+    columns: def.columns,
+    rows: def.rows || [],
+    loading: Boolean(def.loading),
+  });
+
+  const openDivisionItemDrill = (divisionName, datasetLabel) => {
+    const divisionId = divisionIdByName[divisionName];
+    const byItem = {};
+    filteredTransactions.forEach((t) => {
+      if (divisionId != null && String(t.division_id ?? '') !== String(divisionId)) return;
+      const key = t.item_name || 'Unknown item';
+      if (!byItem[key]) byItem[key] = { item: key, issued: 0, returned: 0 };
+      const qty = Number(t.quantity_borrowed ?? t.quantity ?? t.qty ?? 0) || 0;
+      if (t.status === 'Returned') byItem[key].returned += qty;
+      else byItem[key].issued += qty;
+    });
+    const rows = Object.entries(byItem)
+      .sort((a, b) => b[1].issued - a[1].issued)
+      .slice(0, 15)
+      .map(([item, v]) => ({ Item: item, Issued: v.issued, Returned: v.returned }));
+    openDrill({
+      title: `What ${divisionName} is borrowing — top items`,
+      subtitle: `Per-item breakdown within the selected filters (period, division, status), ordered by issued quantity. Showing up to 15 items.`,
+      columns: ['Item', 'Issued', 'Returned'],
+      rows,
+    });
+  };
+
+  const openRequisitionDrill = (divisionName) => {
+    const divisionId = divisionIdByName[divisionName];
+    openDrill({
+      title: `Requisitions from ${divisionName}`,
+      subtitle: 'All requisition records for this division within the selected filters.',
+      loading: true,
+      columns: ['ID', 'Item', 'Qty (approved/requested)', 'Status', 'Requested by', 'Date'],
+    });
+    const token = getToken();
+    fetch('/api/requests', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        const rows = list
+          .filter((x) => String(x.division_id) === String(divisionId))
+          .filter((x) => {
+            const d = new Date(x.created_at || x.requested_date);
+            if (dateRange.from && d < new Date(dateRange.from)) return false;
+            if (dateRange.to && d > new Date(`${dateRange.to}T23:59:59`)) return false;
+            return true;
+          })
+          .filter((x) => (selectedStatus === 'all' || ['Critical', 'Low Stock', 'In Stock'].includes(selectedStatus)
+            ? true
+            : x.status === selectedStatus))
+          .map((x) => ({
+            ID: `#${x.id}`,
+            Item: x.item_name,
+            'Qty (approved/requested)': x.quantity_approved != null ? `${x.quantity_approved}/${x.quantity}` : String(x.quantity),
+            Status: x.status,
+            'Requested by': x.requester_name || x.username || '—',
+            Date: x.created_at ? new Date(x.created_at).toLocaleDateString() : '—',
+          }));
+        setDrill((prev) => (prev && prev.loading ? { ...prev, rows, loading: false } : prev));
+      })
+      .catch(() => setDrill((prev) => (prev && prev.loading ? { ...prev, rows: [], loading: false } : prev)));
+  };
+
+  const openProcurementStatusDrill = (statusLabel) => {
+    const rows = filteredProcurementRows
+      .filter((r) => r.status === statusLabel)
+      .map((r) => ({
+        '#': `#${r.procurement_id}`,
+        Division: r.division_name || '—',
+        Items: (r.items || []).map((i) => i.item_name).join(', ') || '—',
+        Supplier: r.supplier_name || '—',
+        Status: r.status,
+        Date: r.created_at ? new Date(r.created_at).toLocaleDateString() : '—',
+      }));
+    openDrill({
+      title: `Procurement requests — ${statusLabel}`,
+      subtitle: `All procurement requests currently at the "${statusLabel}" stage.`,
+      columns: ['#', 'Division', 'Items', 'Supplier', 'Status', 'Date'],
+      rows,
+    });
+  };
+
+  const openProcurementItemDrill = (itemName) => {
+    const rows = filteredProcurementRows
+      .filter((r) => (r.items || []).some((i) => i.item_name === itemName))
+      .map((r) => {
+        const mine = (r.items || []).filter((i) => i.item_name === itemName);
+        return {
+          '#': `#${r.procurement_id}`,
+          Division: r.division_name || '—',
+          Supplier: r.supplier_name || '—',
+          Requested: mine.reduce((s, i) => s + Number(i.quantity_requested || 0), 0),
+          Received: mine.reduce((s, i) => s + Number(i.quantity_received || 0), 0),
+          Status: r.status,
+        };
+      });
+    openDrill({
+      title: `Procurement history — ${itemName}`,
+      subtitle: 'Every procurement request that included this item, with requested and received quantities.',
+      columns: ['#', 'Division', 'Supplier', 'Requested', 'Received', 'Status'],
+      rows,
+    });
+  };
+
+  const openStockLevelDrill = (levelLabel) => {
+    const classify = (item) => {
+      const qty = Number(item.quantity_on_hand ?? item.quantity ?? 0);
+      const reorder = Number(item.reorder_level ?? item.reorder_point ?? 10);
+      if (qty <= reorder) return 'Critical';
+      if (qty <= reorder * 1.5) return 'Low';
+      return 'Sufficient';
+    };
+    const rows = filteredInventory
+      .filter((item) => classify(item) === levelLabel)
+      .map((item) => ({
+        Item: item.name || item.item_name,
+        Division: item.division_name || divisionNameById[String(item.division_id)] || '—',
+        Category: item.category_name ?? (item.category || '—'),
+        'Units on Hand': Number(item.quantity ?? 0),
+        'Reorder Level': Number(item.reorder_level ?? item.reorder_point ?? 10),
+        'Unit Price': fmtPeso(item.unit_price ?? 0),
+      }))
+      .sort((a, b) => a['Units on Hand'] - b['Units on Hand']);
+    openDrill({
+      title: `${levelLabel} stock items`,
+      subtitle: 'Items currently at this stock level within the selected filters (Critical: qty ≤ reorder level; Low: ≤ 1.5× reorder level; Sufficient: above), matching the chart buckets.',
+      columns: ['Item', 'Division', 'Category', 'Units on Hand', 'Reorder Level', 'Unit Price'],
+      rows,
+    });
+  };
+
+  const openCategoryDrill = (categoryName) => {
+    const rows = filteredInventory
+      .filter((item) => (item.category_name ?? item.category) === categoryName)
+      .map((item) => ({
+        Item: item.name || item.item_name,
+        Division: item.division_name || divisionNameById[String(item.division_id)] || '—',
+        'Units on Hand': Number(item.quantity ?? 0),
+        'Reorder Level': Number(item.reorder_level ?? item.reorder_point ?? 10),
+        'Unit Price': fmtPeso(item.unit_price ?? 0),
+        'Stock Value': fmtPeso(Number(item.quantity ?? 0) * Number(item.unit_price ?? 0)),
+      }));
+    openDrill({
+      title: `Items in "${categoryName}"`,
+      subtitle: 'Every catalog item in this category within the selected filters, with its current stock and value.',
+      columns: ['Item', 'Division', 'Units on Hand', 'Reorder Level', 'Unit Price', 'Stock Value'],
+      rows,
+    });
+  };
+
+  const withChartClick = (options, onIndex) => ({
+    ...options,
+    onClick: (event, elements) => {
+      const el = elements && elements[0];
+      if (el) onIndex(el.index);
+    },
+  });
+
+  const emptyDoughnut = (title) => (
+    <p className="text-sm text-gray-400 flex items-center justify-center" style={{ height: 280 }}>{title}</p>
+  );
 
   return (
     <>
@@ -402,9 +824,9 @@ export default function ReportsPage() {
               }}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
-              {[...new Set(REPORT_TYPES.map((r) => r.group))].map((group) => (
+              {[...new Set(REPORT_TYPES.filter((r) => r.tab === activeTab || r.tab === 'all').map((r) => r.group))].map((group) => (
                 <optgroup key={group} label={group}>
-                  {REPORT_TYPES.filter((r) => r.group === group).map((r) => (
+                  {REPORT_TYPES.filter((r) => r.group === group && (r.tab === activeTab || r.tab === 'all')).map((r) => (
                     <option key={r.value} value={r.value}>
                       {r.label}
                     </option>
@@ -414,7 +836,8 @@ export default function ReportsPage() {
             </select>
             <button
               onClick={handleExportPDF}
-              disabled={exporting || loading}
+              disabled={exporting || loading || reportLoading || analyticsLoading}
+              title="Exports this tab's KPI cards, charts and the full report table as PDF"
               className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -425,7 +848,7 @@ export default function ReportsPage() {
                   d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              {exporting ? 'Exporting...' : 'Export PDF'}
+              {exporting ? 'Generating PDF...' : 'Export PDF'}
             </button>
             <button
               onClick={handleExportExcel}
@@ -443,6 +866,21 @@ export default function ReportsPage() {
               {exporting ? 'Exporting...' : 'Export Excel'}
             </button>
           </div>
+        </div>
+
+        {/* Analytics tabs */}
+        <div className="flex gap-2">
+          {TABS.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setActiveTab(t.value)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                activeTab === t.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         {/* Filters */}
@@ -584,6 +1022,317 @@ export default function ReportsPage() {
           </div>
         )}
 
+        {/* Everything below (KPIs, charts, report table) is captured for the PDF export */}
+        <div ref={tabContentRef}>
+        {/* KPI Cards */}
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonKpiCard key={i} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {tabKpis.map((kpi) => (
+              <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} sub={kpi.sub} />
+            ))}
+          </div>
+        )}
+
+        {/* Tabbed analytics charts */}
+        {analyticsLoading ? (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <SkeletonChart />
+              <SkeletonChart />
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              <SkeletonChart />
+            </div>
+          </>
+        ) : activeTab === 'inventory' ? (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <ChartCard
+                title="Stock Status Distribution"
+                description="Share of catalog items by stock level — how much of the catalogue is running low. Click a slice to list the items behind it."
+              >
+                {tabCharts.stockStatusChart.labels.length > 0 ? (
+                  <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
+                    <div className="flex-1 h-full min-w-0">
+                      <Doughnut
+                        data={tabCharts.stockStatusChart}
+                        options={withChartClick(doughnutChartOptions('bottom', false), (idx) =>
+                          openStockLevelDrill(tabCharts.stockStatusChart.labels[idx])
+                        )}
+                      />
+                    </div>
+                    <DoughnutPercentageLegend
+                      labels={tabCharts.stockStatusChart.labels}
+                      data={tabCharts.stockStatusChart.datasets[0].data}
+                      colors={tabCharts.stockStatusChart.datasets[0].backgroundColor}
+                    />
+                  </div>
+                ) : emptyDoughnut('No inventory data')}
+              </ChartCard>
+
+              <ChartCard
+                title="Inventory by Category"
+                description="Units on hand per item category — which groups take up most of the warehouse. Click a slice to list the items behind it."
+              >
+                {tabCharts.categoryChart.labels.length > 0 ? (
+                  <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
+                    <div className="flex-1 h-full min-w-0">
+                      <Doughnut
+                        data={tabCharts.categoryChart}
+                        options={withChartClick(doughnutChartOptions('right', false), (idx) =>
+                          openCategoryDrill(tabCharts.categoryChart.labels[idx])
+                        )}
+                      />
+                    </div>
+                    <DoughnutPercentageLegend
+                      labels={tabCharts.categoryChart.labels}
+                      data={tabCharts.categoryChart.datasets[0].data}
+                      colors={tabCharts.categoryChart.datasets[0].backgroundColor}
+                    />
+                  </div>
+                ) : emptyDoughnut('No category data')}
+              </ChartCard>
+            </div>
+
+            <ChartCard
+              title="Division Inventory Summary"
+              description="Relative share of distinct items, total units and stock value per division. Bars are normalized to 100%, so focus on proportions between divisions, not absolute amounts."
+            >
+              {tabCharts.divisionDetailsChart.labels.length > 0 ? (
+                <div style={{ height: 300 }}>
+                  <Bar data={tabCharts.divisionDetailsChart} options={divisionSummaryOptions} />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center" style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No division data</p>
+              )}
+            </ChartCard>
+          </>
+        ) : activeTab === 'borrowing' ? (
+          <>
+            <ChartCard
+              title="Issued vs Returned by Division"
+              description="Units borrowed vs units given back per division in the selected period — who is consuming what. Click a division to see its top borrowed items."
+            >
+              {tabCharts.divisionConsumption.labels.length > 0 ? (
+                <div style={{ height: 320 }}>
+                  <Bar
+                    data={tabCharts.divisionConsumption}
+                    options={withChartClick(barChartOptions(), (idx) =>
+                      openDivisionItemDrill(tabCharts.divisionConsumption.labels[idx], tabCharts.divisionConsumption.datasets[0].label)
+                    )}
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center" style={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No borrow transactions</p>
+              )}
+            </ChartCard>
+
+            <ChartCard
+              title={`Monthly Consumption Trend by Division${dateRange.from || dateRange.to ? ` (${dateRange.from || 'start'} to ${dateRange.to || 'today'})` : ''}`}
+              description="Units issued per month, one line per division — watch for spikes (mass borrowing) or dips (seasonality). Click a division in the legend to isolate its line."
+            >
+              {tabCharts.monthlyTrend.labels.length > 0 ? (
+                <div style={{ height: 280 }}>
+                  <Line data={tabCharts.monthlyTrend} options={barChartOptions()} />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center" style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No trend data</p>
+              )}
+            </ChartCard>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <ChartCard
+                title="Top Issued Items"
+                description="Most borrowed items across every division matching the current filters — the wider the bar, the more borrow transactions. Compare with the table on the right for opening/closing balances."
+              >
+                <div className="space-y-3">
+                  {topItems.length === 0 ? (
+                    <p className="text-sm text-gray-400">No transaction data available</p>
+                  ) : (
+                    topItems.map(([item, count]) => {
+                      const maxCount = Math.max(...topItems.map((i) => i[1]), 1);
+                      const pct = (count / maxCount) * 100;
+                      return (
+                        <div key={item}>
+                          <div className="flex justify-between mb-1">
+                            <span className="text-xs text-gray-600 truncate">{item}</span>
+                            <span className="text-xs font-medium text-gray-800">{count}</span>
+                          </div>
+                          <div className="h-6 bg-gray-100 rounded overflow-hidden">
+                            <div
+                              className="h-full bg-blue-600 rounded transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </ChartCard>
+
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-700">Consumption Details</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-100">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        {['Item', 'Category', 'Opening', 'Issued', 'Returned', 'Closing', 'Value'].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                            >
+                              {h}
+                            </th>
+                          )
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {consumption.map((item, idx) => (
+                        <tr key={`${item.item_name}-${idx}`} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {item.item_name}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{item.category}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.opening} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.issued} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.returned} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.closing} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-800">
+                            ₱
+                            {item.value.toLocaleString('en-PH', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <ChartCard
+                title="Requisition Status by Division"
+                description="How many requests per division are Pending, Approved, Released or Rejected. Click a division to list its requisitions."
+              >
+                {tabCharts.requisitionChart.labels.length > 0 ? (
+                  <div style={{ height: 280 }}>
+                    <Bar
+                      data={tabCharts.requisitionChart}
+                      options={withChartClick(barChartOptions(), (idx) =>
+                        openRequisitionDrill(tabCharts.requisitionChart.labels[idx])
+                      )}
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center" style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No requisition data</p>
+                )}
+              </ChartCard>
+
+              <ChartCard
+                title="Procurement Status Distribution"
+                description="Where procurement requests currently sit: Pending → Approved → Received, plus Released/Cancelled. Click a segment to list the requests at that stage."
+              >
+                {procurementStatusChart.labels.length > 0 ? (
+                  <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
+                    <div className="flex-1 h-full min-w-0">
+                      <Doughnut
+                        data={procurementStatusChart}
+                        options={withChartClick(doughnutChartOptions('bottom', false), (idx) =>
+                          openProcurementStatusDrill(procurementStatusChart.labels[idx])
+                        )}
+                      />
+                    </div>
+                    <DoughnutPercentageLegend
+                      labels={procurementStatusChart.labels}
+                      data={procurementStatusChart.datasets[0].data}
+                      colors={procurementStatusChart.datasets[0].backgroundColor}
+                    />
+                  </div>
+                ) : emptyDoughnut('No procurement data')}
+              </ChartCard>
+            </div>
+
+            <ChartCard
+              title="Predicted Maximum Requests per Division"
+              description="Estimated request volume for the next month based on the last 6 months of requisitions and borrow requests — use 'Predicted Max' to size next month's stocking decisions."
+            >
+              {requestForecastChart.labels.length === 0 ? (
+                <p className="text-sm text-gray-400 py-8 text-center">No request history yet</p>
+              ) : (
+                <div style={{ height: 300 }}>
+                  <Bar data={requestForecastChart} options={barChartOptions()} />
+                </div>
+              )}
+              {forecastRows.length > 0 && (
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                        <th className="py-2 pr-4">Division</th>
+                        <th className="py-2 pr-4">Historical Requests (6 mo.)</th>
+                        <th className="py-2 pr-4">Average / Month</th>
+                        <th className="py-2 pr-4">Predicted Max (next month)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {forecastRows.map((row) => (
+                        <tr key={row.division}>
+                          <td className="py-2 pr-4 text-gray-700">{row.division}</td>
+                          <td className="py-2 pr-4 text-gray-600">{row.total_requests}</td>
+                          <td className="py-2 pr-4 text-gray-600">{Number(row.historical_avg || 0).toFixed(1)}</td>
+                          <td className="py-2 pr-4 font-semibold text-orange-600">{row.predicted_max}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </ChartCard>
+
+            <ChartCard
+              title="Requested vs Received per Item"
+              description="What was ordered from suppliers vs what actually arrived — a gap between the bars signals unfulfilled deliveries. Click a bar to view every request that included the item."
+            >
+              {procurementQtyChart.labels.length > 0 ? (
+                <div style={{ height: 300 }}>
+                  <Bar
+                    data={procurementQtyChart}
+                    options={withChartClick(barChartOptions(), (idx) =>
+                      openProcurementItemDrill(procurementQtyChart.labels[idx])
+                    )}
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center" style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No procurement items</p>
+              )}
+            </ChartCard>
+          </>
+        )}
+
         {/* Dynamic Report Table Card */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -628,7 +1377,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {reportRows.map((row, index) => (
+                  {(fullTableMode ? reportRows : pagedReportRows).map((row, index) => (
                     <tr key={index} className="hover:bg-gray-50">
                       {Object.keys(reportRows[0]).map((column) => {
                         const val = row[column];
@@ -668,173 +1417,16 @@ export default function ReportsPage() {
               </table>
             )}
           </div>
+          {!fullTableMode && (
+            <Pagination
+              page={reportCurrentPage}
+              pageSize={reportPageSize}
+              total={reportRows.length}
+              onPageChange={setReportPage}
+            />
+          )}
         </div>
-
-        {/* Bottom Section: KPIs, Charts, Consumption Details */}
-        {loading ? (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <SkeletonKpiCard key={i} />
-              ))}
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <SkeletonChart />
-              <SkeletonChart />
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-100">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      {['Item', 'Category', 'Opening', 'Issued', 'Returned', 'Closing', 'Value'].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <SkeletonTableRow
-                        key={i}
-                        widths={['w-32', 'w-24', 'w-24', 'w-20', 'w-20', 'w-20', 'w-24']}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <KpiCard label="Total Items" value={totalItems} />
-              <KpiCard label="Total Issued" value={totalIssued} />
-              <KpiCard label="Total Returned" value={totalReturned} />
-              <KpiCard
-                label="Total Value"
-                value={`₱${totalValue.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`}
-              />
-            </div>
-
-            {/* Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Monthly Trend Chart */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">
-                  Monthly Trend (6 months)
-                </h3>
-                <div style={{ height: 320 }}>
-                  <Line
-                    data={monthlyChart}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: { legend: { position: 'bottom' } },
-                      scales: { y: { beginAtZero: true } },
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Top Items Chart */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Top Items by Issuance</h3>
-                <div className="space-y-3">
-                  {topItems.length === 0 ? (
-                    <p className="text-sm text-gray-400">No transaction data available</p>
-                  ) : (
-                    topItems.map(([item, count]) => {
-                      const maxCount = Math.max(...topItems.map((i) => i[1]), 1);
-                      const pct = (count / maxCount) * 100;
-                      return (
-                        <div key={item}>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-xs text-gray-600 truncate">{item}</span>
-                            <span className="text-xs font-medium text-gray-800">{count}</span>
-                          </div>
-                          <div className="h-6 bg-gray-100 rounded overflow-hidden">
-                            <div
-                              className="h-full bg-blue-600 rounded transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Consumption Details Table */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-700">Consumption Details</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-100">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      {['Item', 'Category', 'Opening', 'Issued', 'Returned', 'Closing', 'Value'].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {consumption.map((item, idx) => (
-                      <tr key={`${item.item_name}-${idx}`} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {item.item_name}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{item.category}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.opening} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.issued} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.returned} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.closing} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-800">
-                          ₱
-                          {item.value.toLocaleString('en-PH', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
+        </div>
     </div>
     {expandedCell && (
       <div className="fixed inset-0 z-50" onClick={() => setExpandedCell(null)}>
@@ -850,6 +1442,16 @@ export default function ReportsPage() {
           {expandedCell.text}
         </div>
       </div>
+    )}
+    {drill && (
+      <DrillModal
+        title={drill.title}
+        subtitle={drill.subtitle}
+        columns={drill.columns}
+        rows={drill.rows}
+        loading={drill.loading}
+        onClose={() => setDrill(null)}
+      />
     )}
     </>
   );

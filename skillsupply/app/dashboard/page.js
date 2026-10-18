@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import KpiCard from '@/components/KpiCard';
+import ChartCard from '@/components/ChartCard';
+import DrillModal from '@/components/DrillModal';
 import { SkeletonKpiCard, SkeletonTableRow, SkeletonChart } from '@/components/Skeleton';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -17,55 +19,14 @@ import {
   Legend,
   Filler
 } from 'chart.js';
+import {
+  formatCurrency,
+  createBarTooltipConfig,
+  createDoughnutTooltipConfig,
+  buildAnalyticsCharts
+} from '@/components/AnalyticsShared';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, Tooltip, Legend, Filler);
-
-const COLORS = {
-  blue: '#3b82f6',
-  green: '#10b981',
-  yellow: '#f59e0b',
-  red: '#ef4444',
-  purple: '#8b5cf6',
-  pink: '#ec4899',
-  cyan: '#06b6d4',
-  lime: '#84cc16',
-  orange: '#f97316',
-  indigo: '#6366f1'
-};
-
-const PIE_COLORS = [COLORS.blue, COLORS.green, COLORS.yellow, COLORS.red, COLORS.purple, COLORS.pink, COLORS.cyan, COLORS.lime];
-
-function formatCurrency(val) {
-  return `₱${Number(val || 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-function createTooltipConfig(unit = '') {
-  return {
-    callbacks: {
-      label: function(context) {
-        const label = context.dataset.label || '';
-        const value = context.parsed.y ?? context.parsed ?? 0;
-        const total = context.chart.data.datasets.reduce((sum, ds) => sum + ds.data.reduce((a, b) => a + b, 0), 0);
-        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-        return `${label}: ${value.toLocaleString()}${unit} (${percentage}%)`;
-      }
-    }
-  };
-}
-
-function createDoughnutTooltipConfig() {
-  return {
-    callbacks: {
-      label: function(context) {
-        const label = context.label || '';
-        const value = context.parsed || 0;
-        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-        return `${label}: ${value.toLocaleString()} (${percentage}%)`;
-      }
-    }
-  };
-}
 
 function DoughnutPercentageLegend({ labels, data, colors }) {
   const total = data.reduce((sum, v) => sum + Number(v || 0), 0);
@@ -101,7 +62,6 @@ export default function DashboardPage() {
   const [divisions, setDivisions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
-  const [requestForecast, setRequestForecast] = useState([]);
 
   // Data state
   const [kpis, setKpis] = useState({
@@ -113,13 +73,10 @@ export default function DashboardPage() {
     totalValue: 0
   });
   const [divisionConsumption, setDivisionConsumption] = useState({ labels: [], datasets: [] });
-  const [divisionDetails, setDivisionDetails] = useState([]);
-  const [monthlyTrend, setMonthlyTrend] = useState({ labels: [], datasets: [] });
-  const [categoryChart, setCategoryChart] = useState({ labels: [], datasets: [] });
   const [stockStatusChart, setStockStatusChart] = useState({ labels: [], datasets: [] });
-  const [requisitionChart, setRequisitionChart] = useState({ labels: [], datasets: [] });
-  const [divisionDetailsChart, setDivisionDetailsChart] = useState({ labels: [], datasets: [] });
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [drill, setDrill] = useState(null);
 
   async function fetchFilters() {
     const token = sessionStorage.getItem('token');
@@ -156,10 +113,9 @@ export default function DashboardPage() {
       if (filterItem) params.append('item_id', filterItem);
 
       const fetchOpts = { headers, cache: 'no-store' };
-      const [analyticsRes, txRes, forecastRes] = await Promise.all([
+      const [analyticsRes, txRes] = await Promise.all([
         fetch(`/api/dashboard/analytics?${params.toString()}`, fetchOpts),
-        fetch('/api/transactions', fetchOpts),
-        fetch(`/api/dashboard/request-forecast?${params.toString()}`, fetchOpts)
+        fetch('/api/transactions', fetchOpts)
       ]);
 
       const safeJson = async (res) => {
@@ -169,7 +125,6 @@ export default function DashboardPage() {
 
       const analytics = await safeJson(analyticsRes);
       const txData = await safeJson(txRes);
-      const forecastData = await safeJson(forecastRes);
 
       if (analytics.kpis) {
         setKpis({
@@ -182,153 +137,14 @@ export default function DashboardPage() {
         });
       }
 
-      // Division consumption chart
-      if (analytics.divisionConsumption && analytics.divisionConsumption.length > 0) {
-        setDivisionConsumption({
-          labels: analytics.divisionConsumption.map(d => d.division),
-          datasets: [
-            {
-              label: 'Issued',
-              data: analytics.divisionConsumption.map(d => d.issued),
-              backgroundColor: COLORS.blue,
-              borderRadius: 4
-            },
-            {
-              label: 'Returned',
-              data: analytics.divisionConsumption.map(d => d.returned),
-              backgroundColor: COLORS.green,
-              borderRadius: 4
-            }
-          ]
-        });
-      }
-
-      setDivisionDetails(analytics.divisionDetails || []);
-
-      // Division details chart (horizontal bar - normalized percentages)
-      if (analytics.divisionDetails && analytics.divisionDetails.length > 0) {
-        const maxItems = Math.max(...analytics.divisionDetails.map(d => d.totalItems));
-        const maxQty = Math.max(...analytics.divisionDetails.map(d => d.totalQuantity));
-        const maxValue = Math.max(...analytics.divisionDetails.map(d => d.totalValue));
-
-        setDivisionDetailsChart({
-          labels: analytics.divisionDetails.map(d => d.division),
-          datasets: [
-            {
-              label: 'Items',
-              data: analytics.divisionDetails.map(d => maxItems > 0 ? Math.round((d.totalItems / maxItems) * 100) : 0),
-              backgroundColor: COLORS.blue,
-              borderRadius: 4
-            },
-            {
-              label: 'Quantity',
-              data: analytics.divisionDetails.map(d => maxQty > 0 ? Math.round((d.totalQuantity / maxQty) * 100) : 0),
-              backgroundColor: COLORS.green,
-              borderRadius: 4
-            },
-            {
-              label: 'Value',
-              data: analytics.divisionDetails.map(d => maxValue > 0 ? Math.round((d.totalValue / maxValue) * 100) : 0),
-              backgroundColor: COLORS.purple,
-              borderRadius: 4
-            }
-          ]
-        });
-      }
-
-      // Monthly trend (one line per division)
-      if (analytics.monthlyTrendByDivision && analytics.monthlyTrendByDivision.length > 0) {
-        const rows = analytics.monthlyTrendByDivision;
-        const months = [...new Set(rows.map(r => r.month))];
-        const divNames = [...new Set(rows.map(r => r.division))];
-        const divColors = [COLORS.blue, COLORS.green, COLORS.yellow, COLORS.purple, COLORS.pink, COLORS.cyan, COLORS.orange, COLORS.indigo];
-
-        setMonthlyTrend({
-          labels: months,
-          datasets: divNames.map((name, idx) => ({
-            label: name,
-            data: months.map(m => {
-              const row = rows.find(r => r.month === m && r.division === name);
-              return row ? row.issued : 0;
-            }),
-            borderColor: divColors[idx % divColors.length],
-            backgroundColor: `${divColors[idx % divColors.length]}33`,
-            fill: false,
-            tension: 0.4
-          }))
-        });
-      } else if (analytics.monthlyTrend && analytics.monthlyTrend.length > 0) {
-        setMonthlyTrend({
-          labels: analytics.monthlyTrend.map(d => d.month),
-          datasets: [
-            {
-              label: 'Issued',
-              data: analytics.monthlyTrend.map(d => d.issued),
-              borderColor: COLORS.blue,
-              backgroundColor: 'rgba(59,130,246,0.1)',
-              fill: true,
-              tension: 0.4
-            },
-            {
-              label: 'Returned',
-              data: analytics.monthlyTrend.map(d => d.returned),
-              borderColor: COLORS.green,
-              backgroundColor: 'rgba(16,185,129,0.1)',
-              fill: true,
-              tension: 0.4
-            }
-          ]
-        });
-      }
-
-      // Category chart
-      if (analytics.categories && analytics.categories.length > 0) {
-        setCategoryChart({
-          labels: analytics.categories.map(d => d.name),
-          datasets: [{
-            label: 'Items',
-            data: analytics.categories.map(d => d.quantity),
-            backgroundColor: PIE_COLORS.slice(0, analytics.categories.length),
-            borderWidth: 0
-          }]
-        });
-      }
-
-      // Stock status
-      if (analytics.stockStatus) {
-        const ss = analytics.stockStatus;
-        setStockStatusChart({
-          labels: ['Critical', 'Low', 'Sufficient'],
-          datasets: [{
-            data: [
-              Number(ss.critical ?? ss.outOfStock ?? 0),
-              Number(ss.low ?? ss.lowStock ?? 0),
-              Number(ss.sufficient ?? ss.inStock ?? 0)
-            ],
-            backgroundColor: [COLORS.red, COLORS.yellow, COLORS.green],
-            borderWidth: 0
-          }]
-        });
-      }
-
-      setRequestForecast(forecastData.rows || forecastData || []);
-
-      // Requisitions
-      if (analytics.requisitions && analytics.requisitions.length > 0) {
-        setRequisitionChart({
-          labels: analytics.requisitions.map(d => d.division),
-          datasets: [
-            { label: 'Pending', data: analytics.requisitions.map(d => d.pending), backgroundColor: '#6b7280', borderRadius: 4 },
-            { label: 'Approved', data: analytics.requisitions.map(d => d.approved), backgroundColor: COLORS.green, borderRadius: 4 },
-            { label: 'Released', data: analytics.requisitions.map(d => d.released), backgroundColor: COLORS.blue, borderRadius: 4 },
-            { label: 'Rejected', data: analytics.requisitions.map(d => d.rejected), backgroundColor: COLORS.red, borderRadius: 4 }
-          ]
-        });
-      }
+      const charts = buildAnalyticsCharts(analytics);
+      setDivisionConsumption(charts.divisionConsumption);
+      setStockStatusChart(charts.stockStatusChart);
 
       // Recent transactions
       const transactions = Array.isArray(txData) ? txData : (txData.transactions || []);
       setRecentTransactions(transactions.slice(0, 10));
+      setAllTransactions(transactions);
 
     } catch (err) {
       console.error(err);
@@ -354,30 +170,12 @@ export default function DashboardPage() {
     setFilterItem('');
   };
 
-  const requestForecastChart = {
-    labels: requestForecast.map(d => d.division),
-    datasets: [
-      {
-        label: 'Historical Requests (avg/month)',
-        data: requestForecast.map(d => Number(d.historical_avg || 0)),
-        backgroundColor: COLORS.blue,
-        borderRadius: 4
-      },
-      {
-        label: 'Predicted Max Requests (next month)',
-        data: requestForecast.map(d => Number(d.predicted_max || 0)),
-        backgroundColor: COLORS.orange,
-        borderRadius: 4
-      }
-    ]
-  };
-
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
-      tooltip: createTooltipConfig()
+      tooltip: createBarTooltipConfig()
     },
     scales: { y: { beginAtZero: true } },
     barPercentage: 0.7,
@@ -392,6 +190,88 @@ export default function DashboardPage() {
       tooltip: createDoughnutTooltipConfig()
     },
     cutout: '60%'
+  });
+
+  // ---- Drill-down helpers (respect the dashboard filters) ----
+  const divisionIdByName = Object.fromEntries(
+    divisions.map((d) => [d.division_name || d.name, d.division_id || d.id])
+  );
+  const itemCategoryById = Object.fromEntries(
+    inventoryItems.map((i) => [String(i.item_id), i.category_id])
+  );
+
+  const normalizeTxStatus = (s) => (s === 'Active' || s === 'Issued' ? 'Borrowed' : s);
+  const statusFilterActive = filterStatus && !['Critical', 'Low Stock', 'In Stock'].includes(filterStatus);
+
+  const openDivisionItemDrill = (divisionName) => {
+    const divisionId = divisionIdByName[divisionName];
+    const byItem = {};
+    allTransactions.forEach((t) => {
+      if (divisionId != null && String(t.division_id ?? '') !== String(divisionId)) return;
+      const d = new Date(t.borrow_date || t.created_at);
+      if (dateFrom && d < new Date(dateFrom)) return;
+      if (dateTo && d > new Date(`${dateTo}T23:59:59`)) return;
+      if (statusFilterActive && normalizeTxStatus(t.status) !== normalizeTxStatus(filterStatus)) return;
+      if (filterItem && String(t.item_id) !== String(filterItem)) return;
+      if (filterCategory && String(itemCategoryById[String(t.item_id)] ?? '') !== String(filterCategory)) return;
+      const key = t.item_name || 'Unknown item';
+      if (!byItem[key]) byItem[key] = { item: key, issued: 0, returned: 0 };
+      const qty = Number(t.quantity_borrowed ?? t.quantity ?? t.qty ?? 0) || 0;
+      if (t.status === 'Returned') byItem[key].returned += qty;
+      else byItem[key].issued += qty;
+    });
+    const rows = Object.entries(byItem)
+      .sort((a, b) => b[1].issued - a[1].issued)
+      .slice(0, 15)
+      .map(([item, v]) => ({ Item: item, Issued: v.issued, Returned: v.returned }));
+    setDrill({
+      title: `What ${divisionName} is borrowing — top items`,
+      subtitle: 'Per-item breakdown within the selected dashboard filters, ordered by issued quantity. Showing up to 15 items.',
+      columns: ['Item', 'Issued', 'Returned'],
+      rows,
+      loading: false,
+    });
+  };
+
+  const openStockLevelDrill = (levelLabel) => {
+    const classify = (item) => {
+      const qty = Number(item.quantity_on_hand ?? item.quantity ?? 0);
+      const reorder = Number(item.reorder_level ?? 10);
+      if (qty <= reorder) return 'Critical';
+      if (qty <= reorder * 1.5) return 'Low';
+      return 'Sufficient';
+    };
+    const rows = inventoryItems
+      .filter((item) => {
+        if (filterDivision && String(item.division_id) !== String(filterDivision)) return false;
+        if (filterCategory && String(item.category_id) !== String(filterCategory)) return false;
+        if (filterItem && String(item.item_id) !== String(filterItem)) return false;
+        return classify(item) === levelLabel;
+      })
+      .map((item) => ({
+        Item: item.item_name,
+        Division: item.division_name || '—',
+        Category: item.category_name || '—',
+        'Units on Hand': Number(item.quantity_on_hand ?? 0),
+        'Reorder Level': Number(item.reorder_level ?? 10),
+        'Unit Cost': formatCurrency(item.unit_cost ?? 0),
+      }))
+      .sort((a, b) => a['Units on Hand'] - b['Units on Hand']);
+    setDrill({
+      title: `${levelLabel} stock items`,
+      subtitle: 'Items at this stock level within the selected dashboard filters (Critical: qty ≤ reorder level; Low: ≤ 1.5×; Sufficient: above), matching the chart buckets.',
+      columns: ['Item', 'Division', 'Category', 'Units on Hand', 'Reorder Level', 'Unit Cost'],
+      rows,
+      loading: false,
+    });
+  };
+
+  const withChartClick = (options, onIndex) => ({
+    ...options,
+    onClick: (event, elements) => {
+      const el = elements && elements[0];
+      if (el) onIndex(el.index);
+    },
   });
 
   const kpiCards = [
@@ -500,7 +380,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <p className="text-xs text-gray-400 mt-3">
-          All charts below (trend, consumption, requisitions, stock status and category) use these filters.
+          Both charts below (division consumption and stock status) use these filters.
         </p>
       </div>
 
@@ -518,20 +398,31 @@ export default function DashboardPage() {
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {/* Division-wise Consumption */}
-        <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Division Consumption Analytics</h2>
+        <ChartCard
+          title="Division Consumption Analytics"
+          description="Units borrowed vs returned per division in the selected period. Click a division to see its top borrowed items."
+          className="shadow-sm lg:col-span-2"
+        >
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
             <div style={{ height: 320 }}>
-              <Bar data={divisionConsumption} options={chartOptions} />
+              <Bar
+                data={divisionConsumption}
+                options={withChartClick(chartOptions, (idx) =>
+                  openDivisionItemDrill(divisionConsumption.labels[idx])
+                )}
+              />
             </div>
           )}
-        </div>
+        </ChartCard>
 
         {/* Stock Status */}
-        <div className="bg-white rounded-xl shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Stock Status Distribution</h2>
+        <ChartCard
+          title="Stock Status Distribution"
+          description="Share of catalog items by stock level. Click a slice to list the items behind it."
+          className="shadow-sm"
+        >
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
@@ -539,7 +430,12 @@ export default function DashboardPage() {
               {stockStatusChart.labels.length > 0 ? (
                 <>
                   <div className="flex-1 h-full min-w-0">
-                    <Doughnut data={stockStatusChart} options={doughnutOptions('bottom', false)} />
+                    <Doughnut
+                      data={stockStatusChart}
+                      options={withChartClick(doughnutOptions('bottom', false), (idx) =>
+                        openStockLevelDrill(stockStatusChart.labels[idx])
+                      )}
+                    />
                   </div>
                   <DoughnutPercentageLegend
                     labels={stockStatusChart.labels}
@@ -552,149 +448,7 @@ export default function DashboardPage() {
               )}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        {/* Monthly Trend */}
-        <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">
-            Monthly Consumption Trend by Division
-            {dateFrom || dateTo ? ` (${dateFrom || 'start'} to ${dateTo || 'today'})` : ' (last 6 months)'}
-          </h2>
-          {!hasLoaded ? (
-            <SkeletonChart className="border-0 p-0 shadow-none" />
-          ) : (
-            <div style={{ height: 280 }}>
-              <Line data={monthlyTrend} options={chartOptions} />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Charts Row 3 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        {/* Category Breakdown */}
-        <div className="bg-white rounded-xl shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Inventory by Category</h2>
-          {!hasLoaded ? (
-            <SkeletonChart className="border-0 p-0 shadow-none" />
-          ) : (
-            <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
-              {categoryChart.labels.length > 0 ? (
-                <>
-                  <div className="flex-1 h-full min-w-0">
-                    <Doughnut data={categoryChart} options={doughnutOptions('right', false)} />
-                  </div>
-                  <DoughnutPercentageLegend
-                    labels={categoryChart.labels}
-                    data={categoryChart.datasets[0].data}
-                    colors={categoryChart.datasets[0].backgroundColor}
-                  />
-                </>
-              ) : (
-                <p className="text-sm text-gray-400">No data</p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Requisition Analytics */}
-        <div className="bg-white rounded-xl shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Requisition Analytics</h2>
-          {!hasLoaded ? (
-            <SkeletonChart className="border-0 p-0 shadow-none" />
-          ) : (
-            <div style={{ height: 280 }}>
-              <Bar data={requisitionChart} options={chartOptions} />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Division Inventory Summary - Full Width */}
-      <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Division Inventory Summary</h2>
-        {!hasLoaded ? (
-          <SkeletonChart className="border-0 p-0 shadow-none" />
-        ) : (
-          <div style={{ height: 300 }}>
-            <Bar
-              data={divisionDetailsChart}
-              options={{
-                ...chartOptions,
-                indexAxis: 'y',
-                plugins: {
-                  legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
-                  tooltip: {
-                    callbacks: {
-                      label: function(context) {
-                        const idx = context.dataIndex;
-                        const division = divisionDetails[idx];
-                        if (!division) return '';
-                        const label = context.dataset.label;
-                        if (label === 'Items') return `Items: ${division.totalItems}`;
-                        if (label === 'Quantity') return `Quantity: ${division.totalQuantity.toLocaleString()}`;
-                        if (label === 'Value') return `Value: ${formatCurrency(division.totalValue)}`;
-                        return '';
-                      }
-                    }
-                  }
-                },
-                scales: {
-                  x: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: { callback: (v) => v + '%' }
-                  },
-                  y: { ticks: { font: { size: 12 } } }
-                }
-              }}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Predicted Requests per Division */}
-      <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-1">Predicted Maximum Requests per Division</h2>
-        <p className="text-xs text-gray-400 mb-4">
-          Estimated request volume for the next month based on the last 6 months of requisitions and borrow requests.
-        </p>
-        {!hasLoaded ? (
-          <SkeletonChart className="border-0 p-0 shadow-none" />
-        ) : requestForecast.length === 0 ? (
-          <p className="text-sm text-gray-400 py-8 text-center">No request history yet</p>
-        ) : (
-          <div style={{ height: 300 }}>
-            <Bar data={requestForecastChart} options={chartOptions} />
-          </div>
-        )}
-        {requestForecast.length > 0 && (
-          <div className="overflow-x-auto mt-4">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
-                  <th className="py-2 pr-4">Division</th>
-                  <th className="py-2 pr-4">Historical Requests (6 mo.)</th>
-                  <th className="py-2 pr-4">Average / Month</th>
-                  <th className="py-2 pr-4">Predicted Max (next month)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {requestForecast.map((row) => (
-                  <tr key={row.division}>
-                    <td className="py-2 pr-4 text-gray-700">{row.division}</td>
-                    <td className="py-2 pr-4 text-gray-600">{row.total_requests}</td>
-                    <td className="py-2 pr-4 text-gray-600">{Number(row.historical_avg || 0).toFixed(1)}</td>
-                    <td className="py-2 pr-4 font-semibold text-orange-600">{row.predicted_max}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </ChartCard>
       </div>
 
       {/* Recent Issuances */}
@@ -745,6 +499,16 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
+      {drill && (
+        <DrillModal
+          title={drill.title}
+          subtitle={drill.subtitle}
+          columns={drill.columns}
+          rows={drill.rows}
+          loading={drill.loading}
+          onClose={() => setDrill(null)}
+        />
+      )}
     </div>
   );
 }
