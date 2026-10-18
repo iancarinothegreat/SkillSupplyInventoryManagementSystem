@@ -36,6 +36,8 @@ export default function TransactionsPage() {
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All Status');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
   const searchParams = useSearchParams();
   const refId = searchParams?.get('ref');
   const openedRef = useRef(null);
@@ -253,6 +255,13 @@ export default function TransactionsPage() {
     return matchSearch && matchStatus;
   });
 
+  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE) || 1;
+  if (currentPage > totalPages) setCurrentPage(totalPages);
+  const paginatedTransactions = filteredTransactions.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
 
   const statusBadge = (status) => {
     if (status === 'Pending') {
@@ -427,7 +436,7 @@ export default function TransactionsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredTransactions.map((t, idx) => (
+                  {paginatedTransactions.map((t, idx) => (
                     <tr key={t.borrow_id ?? `tx-${idx}`} className="hover:bg-gray-50 transition">
                       <td className="px-6 py-4 text-sm text-gray-500">#{t.borrow_id}</td>
                       <td className="px-6 py-4">
@@ -471,6 +480,75 @@ export default function TransactionsPage() {
             </div>
           )}
         </div>
+
+        {/* Pagination */}
+        {filteredTransactions.length > ITEMS_PER_PAGE && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 bg-gray-50">
+            <div className="text-sm text-gray-600">
+              Showing <span className="font-medium">{((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to
+              <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, filteredTransactions.length)}</span> of
+              <span className="font-medium">{filteredTransactions.length}</span> transactions
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                First
+              </button>
+              <button
+                onClick={() => setCurrentPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Prev
+              </button>
+              <div className="flex gap-0.5">
+                {[...Array(totalPages)].map((_, i) => {
+                  const page = i + 1;
+                  if (page === 1 || page === totalPages || (page >= currentPage - 2 && page <= currentPage + 2)) {
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`w-8 h-8 rounded-lg text-sm font-medium transition ${
+                          page === currentPage
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  }
+                  if (page === currentPage - 3 || page === currentPage + 3) {
+                    return (
+                      <button key={`gap-${page}`} disabled className="w-8 h-8 rounded-lg text-sm text-gray-400">
+                        …
+                      </button>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+              <button
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Next
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Record Borrow Modal */}
