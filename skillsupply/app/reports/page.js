@@ -1,12 +1,14 @@
 ﻿  'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
 import { SkeletonKpiCard, SkeletonChart } from '@/components/Skeleton';
 import Pagination from '@/components/Pagination';
 import ChartCard from '@/components/ChartCard';
 import DrillModal from '@/components/DrillModal';
+import html2canvas from 'html2canvas-pro';
+import { jsPDF } from 'jspdf';
 import {
   COLORS,
   buildAnalyticsCharts,
@@ -101,6 +103,8 @@ export default function ReportsPage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [fullTableMode, setFullTableMode] = useState(false);
+  const tabContentRef = useRef(null);
   const [selectedReport, setSelectedReport] = useState(initialReport);
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [selectedDivision, setSelectedDivision] = useState('all');
@@ -277,35 +281,81 @@ export default function ReportsPage() {
   }, [activeTab, selectedReport]);
 
   const handleExportPDF = async () => {
+    if (exporting || loading || reportLoading || analyticsLoading) return;
     setExporting(true);
     try {
-      const token = getToken();
-      const params = new URLSearchParams({
-        report: selectedReport,
-        ...dateRange,
-        ...(dateRange.to ? { to: `${dateRange.to}T23:59:59` } : {}),
-        division: selectedDivision,
-        category: selectedCategory,
-        status: selectedStatus,
-        format: 'pdf',
-      });
-      const res = await fetch(`/api/reports/data?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `SkillSupply_${selectedReport}_${new Date().toISOString().slice(0, 10)}.pdf`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-      } else {
-        alert('Export failed. Please try again.');
+      // Render ALL report rows (bypass pagination) and let React paint before capture
+      if (reportRows.length > reportPageSize) {
+        setFullTableMode(true);
+        await new Promise((r) => setTimeout(r, 150));
       }
+      await new Promise((r) => setTimeout(r, 100));
+
+      const node = tabContentRef.current;
+      if (!node) throw new Error('Nothing to export');
+      const canvas = await html2canvas(node, {
+        scale: node.scrollHeight > 6000 ? 1.5 : 2,
+        backgroundColor: '#f3f4f6',
+        useCORS: true,
+      });
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageW = 210;
+      const pageH = 297;
+      const margin = 8;
+      const headerMm = 16;
+      const imgW = pageW - margin * 2;
+      const pxPerMm = canvas.width / imgW;
+
+      const divisionLabel = selectedDivision === 'all'
+        ? 'All divisions'
+        : (divisions.find((d) => String(d.division_id) === String(selectedDivision))?.division_name || selectedDivision);
+      const categoryLabel = selectedCategory === 'all'
+        ? 'All categories'
+        : (categories.find((c) => String(c.category_id) === String(selectedCategory))?.category_name || selectedCategory);
+      const tabLabel = activeTab === 'inventory' ? 'Inventory' : activeTab === 'borrowing' ? 'Borrowing' : 'Requisition & Procurement';
+
+      let remaining = canvas.height;
+      let pageIndex = 0;
+      while (remaining > 0) {
+        const availMm = pageH - margin * 2 - (pageIndex === 0 ? headerMm : 0);
+        const takePx = Math.min(Math.floor(availMm * pxPerMm), remaining);
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = takePx;
+        const ctx = pageCanvas.getContext('2d');
+        ctx.fillStyle = '#f3f4f6';
+        ctx.fillRect(0, 0, pageCanvas.width, takePx);
+        ctx.drawImage(canvas, 0, canvas.height - remaining, canvas.width, takePx, 0, 0, canvas.width, takePx);
+        const imgData = pageCanvas.toDataURL('image/jpeg', 0.92);
+        if (pageIndex > 0) pdf.addPage();
+        if (pageIndex === 0) {
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(14);
+          pdf.text('SkillSupply Inventory Management System', margin, margin + 3);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(11);
+          pdf.text(reportTitle, margin, margin + 9);
+          pdf.setFontSize(8);
+          pdf.text(
+            `Generated: ${new Date().toLocaleString('en-PH')}  |  Analytics tab: ${tabLabel}  |  Period: ${dateRange.from || 'start'} to ${dateRange.to || 'today'}  |  Division: ${divisionLabel}  |  Category: ${categoryLabel}  |  Status: ${selectedStatus === 'all' ? 'All' : selectedStatus}`,
+            margin,
+            margin + 13,
+            { maxWidth: imgW }
+          );
+          pdf.addImage(imgData, 'JPEG', margin, margin + headerMm, imgW, takePx / pxPerMm);
+        } else {
+          pdf.addImage(imgData, 'JPEG', margin, margin, imgW, takePx / pxPerMm);
+        }
+        remaining -= takePx;
+        pageIndex += 1;
+      }
+
+      pdf.save(`SkillSupply_${tabLabel.replace(/[^a-zA-Z0-9]+/g, '-')}_${reportTitle.replace(/[^a-zA-Z0-9]+/g, '-')}_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (err) {
       alert('Export error: ' + err.message);
     } finally {
+      setFullTableMode(false);
       setExporting(false);
     }
   };
@@ -786,7 +836,8 @@ export default function ReportsPage() {
             </select>
             <button
               onClick={handleExportPDF}
-              disabled={exporting || loading}
+              disabled={exporting || loading || reportLoading || analyticsLoading}
+              title="Exports this tab's KPI cards, charts and the full report table as PDF"
               className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -797,7 +848,7 @@ export default function ReportsPage() {
                   d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              {exporting ? 'Exporting...' : 'Export PDF'}
+              {exporting ? 'Generating PDF...' : 'Export PDF'}
             </button>
             <button
               onClick={handleExportExcel}
@@ -971,6 +1022,8 @@ export default function ReportsPage() {
           </div>
         )}
 
+        {/* Everything below (KPIs, charts, report table) is captured for the PDF export */}
+        <div ref={tabContentRef}>
         {/* KPI Cards */}
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1324,7 +1377,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {pagedReportRows.map((row, index) => (
+                  {(fullTableMode ? reportRows : pagedReportRows).map((row, index) => (
                     <tr key={index} className="hover:bg-gray-50">
                       {Object.keys(reportRows[0]).map((column) => {
                         const val = row[column];
@@ -1364,12 +1417,15 @@ export default function ReportsPage() {
               </table>
             )}
           </div>
-          <Pagination
-            page={reportCurrentPage}
-            pageSize={reportPageSize}
-            total={reportRows.length}
-            onPageChange={setReportPage}
-          />
+          {!fullTableMode && (
+            <Pagination
+              page={reportCurrentPage}
+              pageSize={reportPageSize}
+              total={reportRows.length}
+              onPageChange={setReportPage}
+            />
+          )}
+        </div>
         </div>
     </div>
     {expandedCell && (
