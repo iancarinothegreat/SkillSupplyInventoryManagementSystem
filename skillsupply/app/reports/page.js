@@ -1,54 +1,70 @@
-  'use client';
+﻿  'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import KpiCard from '../../components/KpiCard';
-import { SkeletonKpiCard, SkeletonChart, SkeletonTableRow } from '@/components/Skeleton';
+import { SkeletonKpiCard, SkeletonChart } from '@/components/Skeleton';
 import Pagination from '@/components/Pagination';
+import {
+  COLORS,
+  buildAnalyticsCharts,
+  barChartOptions,
+  doughnutChartOptions,
+  DoughnutPercentageLegend
+} from '@/components/AnalyticsShared';
 import * as XLSX from 'xlsx';
-import { Line } from 'react-chartjs-2';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   LineElement,
   PointElement,
+  BarElement,
+  ArcElement,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, BarElement, ArcElement, Tooltip, Legend, Filler);
+
+const TABS = [
+  { value: 'inventory', label: 'Inventory' },
+  { value: 'borrowing', label: 'Borrowing' },
+  { value: 'requisitions', label: 'Requisition & Procurement' },
+];
 
 const REPORT_TYPES = [
-  { group: 'Inventory', value: 'inventory', label: 'Inventory Status' },
-  { group: 'Inventory', value: 'inventory_value', label: 'Inventory Valuation' },
-  { group: 'Inventory', value: 'lowstock', label: 'Critical Reorder Report' },
-  { group: 'Inventory', value: 'outofstock', label: 'Critical Stock' },
-  { group: 'Inventory', value: 'inventory_category', label: 'Inventory by Category' },
-  { group: 'Inventory', value: 'inventory_division', label: 'Inventory by Division' },
-  { group: 'Inventory', value: 'defective', label: 'Defective Stock' },
-  { group: 'Inventory', value: 'item_detail', label: 'Item Detail' },
-  { group: 'Transactions', value: 'transactions', label: 'Transaction Log' },
-  { group: 'Transactions', value: 'returns', label: 'Returns Report' },
-  { group: 'Transactions', value: 'overdue', label: 'Overdue Items' },
-  { group: 'Transactions', value: 'borrowed', label: 'Currently Borrowed' },
-  { group: 'Consumption', value: 'consumption', label: 'Consumption by Item' },
-  { group: 'Consumption', value: 'most_used', label: 'Most Used Items' },
-  { group: 'Consumption', value: 'least_used', label: 'Least Used Items' },
-  { group: 'Consumption', value: 'monthly_trend', label: 'Monthly Issued vs Returned' },
-  { group: 'Requisitions', value: 'requisitions', label: 'Requisition Status' },
-  { group: 'Requisitions', value: 'requisition_status', label: 'Requisitions by Status' },
-  { group: 'Requisitions', value: 'requisition_division', label: 'Requisitions by Division' },
-  { group: 'Requisitions', value: 'requisition_approval', label: 'Approval Time' },
-  { group: 'Requisitions', value: 'requisition_purpose', label: 'Purpose Analysis' },
-  { group: 'Forecasting', value: 'forecast', label: 'Demand Forecast' },
-  { group: 'Forecasting', value: 'forecast_risk', label: 'Forecast Risk' },
-  { group: 'Administration', value: 'audit', label: 'Audit Trail' },
-  { group: 'Administration', value: 'login_audit', label: 'Login Audit Logs' },
+  { group: 'Inventory', tab: 'inventory', value: 'inventory', label: 'Inventory Status' },
+  { group: 'Inventory', tab: 'inventory', value: 'inventory_value', label: 'Inventory Valuation' },
+  { group: 'Inventory', tab: 'inventory', value: 'lowstock', label: 'Critical Reorder Report' },
+  { group: 'Inventory', tab: 'inventory', value: 'outofstock', label: 'Critical Stock' },
+  { group: 'Inventory', tab: 'inventory', value: 'inventory_category', label: 'Inventory by Category' },
+  { group: 'Inventory', tab: 'inventory', value: 'inventory_division', label: 'Inventory by Division' },
+  { group: 'Inventory', tab: 'inventory', value: 'defective', label: 'Defective Stock' },
+  { group: 'Inventory', tab: 'inventory', value: 'item_detail', label: 'Item Detail' },
+  { group: 'Transactions', tab: 'borrowing', value: 'transactions', label: 'Transaction Log' },
+  { group: 'Transactions', tab: 'borrowing', value: 'returns', label: 'Returns Report' },
+  { group: 'Transactions', tab: 'borrowing', value: 'overdue', label: 'Overdue Items' },
+  { group: 'Transactions', tab: 'borrowing', value: 'borrowed', label: 'Currently Borrowed' },
+  { group: 'Consumption', tab: 'borrowing', value: 'consumption', label: 'Consumption by Item' },
+  { group: 'Consumption', tab: 'borrowing', value: 'most_used', label: 'Most Used Items' },
+  { group: 'Consumption', tab: 'borrowing', value: 'least_used', label: 'Least Used Items' },
+  { group: 'Consumption', tab: 'borrowing', value: 'monthly_trend', label: 'Monthly Issued vs Returned' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisitions', label: 'Requisition Status' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisition_status', label: 'Requisitions by Status' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisition_division', label: 'Requisitions by Division' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisition_approval', label: 'Approval Time' },
+  { group: 'Requisitions', tab: 'requisitions', value: 'requisition_purpose', label: 'Purpose Analysis' },
+  { group: 'Forecasting', tab: 'requisitions', value: 'forecast', label: 'Demand Forecast' },
+  { group: 'Forecasting', tab: 'requisitions', value: 'forecast_risk', label: 'Forecast Risk' },
+  { group: 'Administration', tab: 'all', value: 'audit', label: 'Audit Trail' },
+  { group: 'Administration', tab: 'all', value: 'login_audit', label: 'Login Audit Logs' },
 ];
 
 function formatAuditValue(val, categories, divisions) {
-  if (val === null || val === undefined || val === '—') return '—';
+  if (val === null || val === undefined || val === 'â€”') return 'â€”';
   if (typeof val !== 'object') return val;
   const obj = typeof val === 'string' ? (() => { try { return JSON.parse(val); } catch { return val; } })() : val;
   if (typeof obj !== 'object' || obj === null) return String(obj);
@@ -86,7 +102,6 @@ export default function ReportsPage() {
   const [selectedReport, setSelectedReport] = useState(initialReport);
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [selectedDivision, setSelectedDivision] = useState('all');
-  const [monthlyChart, setMonthlyChart] = useState({ labels: [], datasets: [] });
   const [reportRows, setReportRows] = useState([]);
   const [reportTitle, setReportTitle] = useState('Inventory Status');
   const [reportLoading, setReportLoading] = useState(false);
@@ -98,6 +113,11 @@ export default function ReportsPage() {
   const [auditSort, setAuditSort] = useState('timestamp');
   const [auditOrder, setAuditOrder] = useState('DESC');
   const [reportPage, setReportPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('inventory');
+  const [analyticsCharts, setAnalyticsCharts] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [procurementRows, setProcurementRows] = useState([]);
+  const [forecastRows, setForecastRows] = useState([]);
 
   const getToken = () => {
     if (typeof window === 'undefined') return '';
@@ -128,12 +148,11 @@ export default function ReportsPage() {
   const fetchData = useCallback(async () => {
     try {
       const token = getToken();
-      const [invRes, txRes, divRes, categoryRes, monthlyRes] = await Promise.all([
+      const [invRes, txRes, divRes, categoryRes] = await Promise.all([
         fetch('/api/inventory', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/transactions', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/divisions', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/categories', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/dashboard/monthly-trend', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/categories', { headers: { Authorization: `Bearer ${token}` } })
       ]);
       if (invRes.ok) setInventory(await invRes.json());
       if (txRes.ok) setTransactions(await txRes.json());
@@ -144,42 +163,6 @@ export default function ReportsPage() {
       if (categoryRes.ok) {
         const categoryData = await categoryRes.json();
         setCategories(Array.isArray(categoryData) ? categoryData : categoryData.categories || []);
-      }
-      if (monthlyRes.ok) {
-        const monthlyData = await monthlyRes.json();
-        if (Array.isArray(monthlyData) && monthlyData.length > 0) {
-          setMonthlyChart({
-            labels: monthlyData.map(d => d.month),
-            datasets: [
-              {
-                label: 'Issued',
-                data: monthlyData.map(d => d.issued),
-                borderColor: '#1e40af',
-                backgroundColor: '#1e40af',
-                tension: 0.3,
-                pointRadius: 4,
-                pointHoverRadius: 6
-              },
-              {
-                label: 'Returned',
-                data: monthlyData.map(d => d.returned),
-                borderColor: '#16a34a',
-                backgroundColor: '#16a34a',
-                tension: 0.3,
-                pointRadius: 4,
-                pointHoverRadius: 6
-              }
-            ]
-          });
-        } else {
-          setMonthlyChart({
-            labels: ['No Data'],
-            datasets: [
-              { label: 'Issued', data: [0], borderColor: '#1e40af', backgroundColor: '#1e40af', tension: 0.3, pointRadius: 4 },
-              { label: 'Returned', data: [0], borderColor: '#16a34a', backgroundColor: '#16a34a', tension: 0.3, pointRadius: 4 }
-            ]
-          });
-        }
       }
     } catch (err) {
       console.error(err);
@@ -234,6 +217,60 @@ export default function ReportsPage() {
   useEffect(() => {
     setReportPage(1);
   }, [selectedReport, selectedDivision, selectedCategory, selectedStatus, dateRange, auditSearch, auditAction, auditOrder]);
+
+  const fetchTabCharts = useCallback(async () => {
+    setAnalyticsLoading(true);
+    try {
+      const token = getToken();
+      const params = new URLSearchParams();
+      if (dateRange.from) params.set('from', dateRange.from);
+      if (dateRange.to) params.set('to', `${dateRange.to}T23:59:59`);
+      if (selectedDivision !== 'all') params.set('division_id', selectedDivision);
+      if (selectedCategory !== 'all') params.set('category_id', selectedCategory);
+      if (selectedStatus !== 'all' && selectedStatus !== 'Critical' && selectedStatus !== 'Low Stock' && selectedStatus !== 'In Stock') {
+        params.set('status', selectedStatus);
+      }
+
+      const jobs = [fetch(`/api/dashboard/analytics?${params}`, { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } })];
+      if (activeTab === 'requisitions') {
+        jobs.push(fetch('/api/procurement', { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } }));
+        jobs.push(fetch(`/api/dashboard/request-forecast?${params}`, { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } }));
+      }
+      const [analyticsRes, procurementRes, forecastRes] = await Promise.all(jobs);
+
+      const safeJson = async (res) => {
+        const text = await res.text();
+        try { return JSON.parse(text); } catch { return {}; }
+      };
+      const analytics = await safeJson(analyticsRes);
+      setAnalyticsCharts(buildAnalyticsCharts(analytics || {}));
+
+      if (activeTab === 'requisitions') {
+        const procData = await safeJson(procurementRes);
+        setProcurementRows(Array.isArray(procData) ? procData : (procData.rows || []));
+        const forecastData = await safeJson(forecastRes);
+        setForecastRows(Array.isArray(forecastData) ? forecastData : (forecastData.rows || []));
+      }
+    } catch (err) {
+      console.error(err);
+      setAnalyticsCharts(buildAnalyticsCharts({}));
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [activeTab, dateRange, selectedDivision, selectedCategory, selectedStatus]);
+
+  useEffect(() => {
+    queueMicrotask(fetchTabCharts);
+  }, [fetchTabCharts]);
+
+  // Keep the selected report type valid for the active tab
+  useEffect(() => {
+    const belongs = REPORT_TYPES.some((r) => r.value === selectedReport && (r.tab === activeTab || r.tab === 'all'));
+    if (!belongs) {
+      const first = REPORT_TYPES.find((r) => r.tab === activeTab);
+      if (first) setSelectedReport(first.value);
+    }
+  }, [activeTab, selectedReport]);
 
   const handleExportPDF = async () => {
     setExporting(true);
@@ -376,7 +413,7 @@ export default function ReportsPage() {
       );
       const currentStock = Number(inventoryItem?.quantity ?? 0);
       const unitPrice = Number(inventoryItem?.unit_price ?? 0);
-      const category = inventoryItem?.category_name ?? '—';
+      const category = inventoryItem?.category_name ?? 'â€”';
       const closing = currentStock;
       const opening = currentStock + row.issued - row.returned;
       return {
@@ -398,6 +435,102 @@ export default function ReportsPage() {
     reportCurrentPage * reportPageSize
   );
 
+  const tabCharts = analyticsCharts || {
+    divisionConsumption: { labels: [], datasets: [] },
+    divisionDetails: [],
+    divisionDetailsChart: { labels: [], datasets: [] },
+    monthlyTrend: { labels: [], datasets: [] },
+    categoryChart: { labels: [], datasets: [] },
+    stockStatusChart: { labels: [], datasets: [] },
+    requisitionChart: { labels: [], datasets: [] },
+  };
+
+  const procurementStatusCounts = {
+    Pending: procurementRows.filter((r) => r.status === 'Pending').length,
+    Approved: procurementRows.filter((r) => r.status === 'Approved').length,
+    Received: procurementRows.filter((r) => r.status === 'Received').length,
+    Rejected: procurementRows.filter((r) => r.status === 'Rejected').length,
+    Cancelled: procurementRows.filter((r) => r.status === 'Cancelled').length,
+  };
+  const procurementStatusChart = {
+    labels: Object.keys(procurementStatusCounts).filter((k) => procurementStatusCounts[k] > 0),
+    datasets: [{
+      data: Object.keys(procurementStatusCounts).filter((k) => procurementStatusCounts[k] > 0).map((k) => procurementStatusCounts[k]),
+      backgroundColor: [COLORS.yellow, COLORS.blue, COLORS.green, COLORS.red, '#9ca3af'].filter(
+        (_, i) => procurementStatusCounts[['Pending', 'Approved', 'Received', 'Rejected', 'Cancelled'][i]] > 0
+      ),
+      borderWidth: 0
+    }]
+  };
+
+  const procurementQty = {};
+  procurementRows.forEach((r) => {
+    (r.items || []).forEach((it) => {
+      if (!procurementQty[it.item_name]) {
+        procurementQty[it.item_name] = { requested: 0, received: 0 };
+      }
+      procurementQty[it.item_name].requested += Number(it.quantity_requested || 0);
+      procurementQty[it.item_name].received += Number(it.quantity_received || 0);
+    });
+  });
+  const procurementQtyTop = Object.entries(procurementQty)
+    .sort((a, b) => b[1].requested - a[1].requested)
+    .slice(0, 8);
+  const procurementQtyChart = {
+    labels: procurementQtyTop.map(([name]) => name),
+    datasets: [
+      { label: 'Requested', data: procurementQtyTop.map(([, v]) => v.requested), backgroundColor: COLORS.yellow, borderRadius: 4 },
+      { label: 'Received', data: procurementQtyTop.map(([, v]) => v.received), backgroundColor: COLORS.green, borderRadius: 4 }
+    ]
+  };
+
+  const requestForecastChart = {
+    labels: forecastRows.map(d => d.division),
+    datasets: [
+      {
+        label: 'Historical Requests (avg/month)',
+        data: forecastRows.map(d => Number(d.historical_avg || 0)),
+        backgroundColor: COLORS.blue,
+        borderRadius: 4
+      },
+      {
+        label: 'Predicted Max Requests (next month)',
+        data: forecastRows.map(d => Number(d.predicted_max || 0)),
+        backgroundColor: COLORS.orange,
+        borderRadius: 4
+      }
+    ]
+  };
+
+  const divisionSummaryOptions = {
+    ...barChartOptions(),
+    indexAxis: 'y',
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            const division = tabCharts.divisionDetails[context.dataIndex];
+            if (!division) return '';
+            const label = context.dataset.label;
+            if (label === 'Items') return `Items: ${division.totalItems}`;
+            if (label === 'Quantity') return `Quantity: ${division.totalQuantity.toLocaleString()}`;
+            if (label === 'Value') return `Value: â‚±${Number(division.totalValue || 0).toLocaleString('en-PH')}`;
+            return '';
+          }
+        }
+      }
+    },
+    scales: {
+      x: { beginAtZero: true, max: 100, ticks: { callback: (v) => v + '%' } },
+      y: { ticks: { font: { size: 12 } } }
+    }
+  };
+
+  const emptyDoughnut = (title) => (
+    <p className="text-sm text-gray-400 flex items-center justify-center" style={{ height: 280 }}>{title}</p>
+  );
+
   return (
     <>
     <div className="space-y-6">
@@ -416,9 +549,9 @@ export default function ReportsPage() {
               }}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
-              {[...new Set(REPORT_TYPES.map((r) => r.group))].map((group) => (
+              {[...new Set(REPORT_TYPES.filter((r) => r.tab === activeTab || r.tab === 'all').map((r) => r.group))].map((group) => (
                 <optgroup key={group} label={group}>
-                  {REPORT_TYPES.filter((r) => r.group === group).map((r) => (
+                  {REPORT_TYPES.filter((r) => r.group === group && (r.tab === activeTab || r.tab === 'all')).map((r) => (
                     <option key={r.value} value={r.value}>
                       {r.label}
                     </option>
@@ -457,6 +590,21 @@ export default function ReportsPage() {
               {exporting ? 'Exporting...' : 'Export Excel'}
             </button>
           </div>
+        </div>
+
+        {/* Analytics tabs */}
+        <div className="flex gap-2">
+          {TABS.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setActiveTab(t.value)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                activeTab === t.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         {/* Filters */}
@@ -612,12 +760,264 @@ export default function ReportsPage() {
             <KpiCard label="Total Returned" value={totalReturned} />
             <KpiCard
               label="Total Value"
-              value={`₱${totalValue.toLocaleString('en-US', {
+              value={`â‚±${totalValue.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}`}
             />
           </div>
+        )}
+
+        {/* Tabbed analytics charts */}
+        {analyticsLoading ? (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <SkeletonChart />
+              <SkeletonChart />
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              <SkeletonChart />
+            </div>
+          </>
+        ) : activeTab === 'inventory' ? (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Stock Status Distribution</h3>
+                {tabCharts.stockStatusChart.labels.length > 0 ? (
+                  <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
+                    <div className="flex-1 h-full min-w-0">
+                      <Doughnut data={tabCharts.stockStatusChart} options={doughnutChartOptions('bottom', false)} />
+                    </div>
+                    <DoughnutPercentageLegend
+                      labels={tabCharts.stockStatusChart.labels}
+                      data={tabCharts.stockStatusChart.datasets[0].data}
+                      colors={tabCharts.stockStatusChart.datasets[0].backgroundColor}
+                    />
+                  </div>
+                ) : emptyDoughnut('No inventory data')}
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Inventory by Category</h3>
+                {tabCharts.categoryChart.labels.length > 0 ? (
+                  <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
+                    <div className="flex-1 h-full min-w-0">
+                      <Doughnut data={tabCharts.categoryChart} options={doughnutChartOptions('right', false)} />
+                    </div>
+                    <DoughnutPercentageLegend
+                      labels={tabCharts.categoryChart.labels}
+                      data={tabCharts.categoryChart.datasets[0].data}
+                      colors={tabCharts.categoryChart.datasets[0].backgroundColor}
+                    />
+                  </div>
+                ) : emptyDoughnut('No category data')}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Division Inventory Summary</h3>
+              {tabCharts.divisionDetailsChart.labels.length > 0 ? (
+                <div style={{ height: 300 }}>
+                  <Bar data={tabCharts.divisionDetailsChart} options={divisionSummaryOptions} />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center" style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No division data</p>
+              )}
+            </div>
+          </>
+        ) : activeTab === 'borrowing' ? (
+          <>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">
+                Division Consumption Analytics
+              </h3>
+              {tabCharts.divisionConsumption.labels.length > 0 ? (
+                <div style={{ height: 320 }}>
+                  <Bar data={tabCharts.divisionConsumption} options={barChartOptions()} />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center" style={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No borrow transactions</p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">
+                Monthly Consumption Trend by Division
+                {dateRange.from || dateRange.to ? ` (${dateRange.from || 'start'} to ${dateRange.to || 'today'})` : ''}
+              </h3>
+              {tabCharts.monthlyTrend.labels.length > 0 ? (
+                <div style={{ height: 280 }}>
+                  <Line data={tabCharts.monthlyTrend} options={barChartOptions()} />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center" style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No trend data</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Top Items by Issuance</h3>
+                <div className="space-y-3">
+                  {topItems.length === 0 ? (
+                    <p className="text-sm text-gray-400">No transaction data available</p>
+                  ) : (
+                    topItems.map(([item, count]) => {
+                      const maxCount = Math.max(...topItems.map((i) => i[1]), 1);
+                      const pct = (count / maxCount) * 100;
+                      return (
+                        <div key={item}>
+                          <div className="flex justify-between mb-1">
+                            <span className="text-xs text-gray-600 truncate">{item}</span>
+                            <span className="text-xs font-medium text-gray-800">{count}</span>
+                          </div>
+                          <div className="h-6 bg-gray-100 rounded overflow-hidden">
+                            <div
+                              className="h-full bg-blue-600 rounded transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-700">Consumption Details</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-100">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        {['Item', 'Category', 'Opening', 'Issued', 'Returned', 'Closing', 'Value'].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                            >
+                              {h}
+                            </th>
+                          )
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {consumption.map((item, idx) => (
+                        <tr key={`${item.item_name}-${idx}`} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {item.item_name}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{item.category}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.opening} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.issued} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.returned} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {item.closing} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-800">
+                            â‚±
+                            {item.value.toLocaleString('en-PH', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Requisition Analytics</h3>
+                {tabCharts.requisitionChart.labels.length > 0 ? (
+                  <div style={{ height: 280 }}>
+                    <Bar data={tabCharts.requisitionChart} options={barChartOptions()} />
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center" style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No requisition data</p>
+                )}
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Procurement Status Distribution</h3>
+                {procurementStatusChart.labels.length > 0 ? (
+                  <div style={{ height: 280 }} className="flex items-center justify-center gap-4">
+                    <div className="flex-1 h-full min-w-0">
+                      <Doughnut data={procurementStatusChart} options={doughnutChartOptions('bottom', false)} />
+                    </div>
+                    <DoughnutPercentageLegend
+                      labels={procurementStatusChart.labels}
+                      data={procurementStatusChart.datasets[0].data}
+                      colors={procurementStatusChart.datasets[0].backgroundColor}
+                    />
+                  </div>
+                ) : emptyDoughnut('No procurement data')}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-1">Predicted Maximum Requests per Division</h3>
+              <p className="text-xs text-gray-400 mb-4">
+                Estimated request volume for the next month based on the last 6 months of requisitions and borrow requests.
+              </p>
+              {requestForecastChart.labels.length === 0 ? (
+                <p className="text-sm text-gray-400 py-8 text-center">No request history yet</p>
+              ) : (
+                <div style={{ height: 300 }}>
+                  <Bar data={requestForecastChart} options={barChartOptions()} />
+                </div>
+              )}
+              {forecastRows.length > 0 && (
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-400">
+                        <th className="py-2 pr-4">Division</th>
+                        <th className="py-2 pr-4">Historical Requests (6 mo.)</th>
+                        <th className="py-2 pr-4">Average / Month</th>
+                        <th className="py-2 pr-4">Predicted Max (next month)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {forecastRows.map((row) => (
+                        <tr key={row.division}>
+                          <td className="py-2 pr-4 text-gray-700">{row.division}</td>
+                          <td className="py-2 pr-4 text-gray-600">{row.total_requests}</td>
+                          <td className="py-2 pr-4 text-gray-600">{Number(row.historical_avg || 0).toFixed(1)}</td>
+                          <td className="py-2 pr-4 font-semibold text-orange-600">{row.predicted_max}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Requested vs Received per Item</h3>
+              {procurementQtyChart.labels.length > 0 ? (
+                <div style={{ height: 300 }}>
+                  <Bar data={procurementQtyChart} options={barChartOptions()} />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center" style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No procurement items</p>
+              )}
+            </div>
+          </>
         )}
 
         {/* Dynamic Report Table Card */}
@@ -668,7 +1068,7 @@ export default function ReportsPage() {
                     <tr key={index} className="hover:bg-gray-50">
                       {Object.keys(reportRows[0]).map((column) => {
                         const val = row[column];
-                        let formattedVal = val ?? '—';
+                        let formattedVal = val ?? 'â€”';
                         if (selectedReport === 'audit' && (column === 'Previous Value' || column === 'New Value')) {
                           formattedVal = formatAuditValue(val, categories, divisions);
                         } else if (column === 'Unit Cost' && typeof val === 'number') {
@@ -687,12 +1087,12 @@ export default function ReportsPage() {
                         return (
                           <td
                             key={column}
-                            onClick={isAuditCell && formattedVal !== '—' ? (e) => {
+                            onClick={isAuditCell && formattedVal !== 'â€”' ? (e) => {
                               e.stopPropagation();
                               const rect = e.currentTarget.getBoundingClientRect();
                               setExpandedCell({ text: String(formattedVal), x: rect.left, y: rect.bottom + 4 });
                             } : undefined}
-                            className={`px-4 py-3 text-sm text-gray-700 ${isAuditCell ? 'max-w-[280px] truncate' : 'whitespace-nowrap'} ${isAuditCell && formattedVal !== '—' ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                            className={`px-4 py-3 text-sm text-gray-700 ${isAuditCell ? 'max-w-[280px] truncate' : 'whitespace-nowrap'} ${isAuditCell && formattedVal !== 'â€”' ? 'cursor-pointer hover:bg-gray-50' : ''}`}
                           >
                             {formattedVal}
                           </td>
@@ -711,153 +1111,6 @@ export default function ReportsPage() {
             onPageChange={setReportPage}
           />
         </div>
-
-        {/* Bottom Section: Charts, Consumption Details */}
-        {loading ? (
-          <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <SkeletonChart />
-              <SkeletonChart />
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-100">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      {['Item', 'Category', 'Opening', 'Issued', 'Returned', 'Closing', 'Value'].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <SkeletonTableRow
-                        key={i}
-                        widths={['w-32', 'w-24', 'w-24', 'w-20', 'w-20', 'w-20', 'w-24']}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Monthly Trend Chart */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">
-                  Monthly Trend (6 months)
-                </h3>
-                <div style={{ height: 320 }}>
-                  <Line
-                    data={monthlyChart}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: { legend: { position: 'bottom' } },
-                      scales: { y: { beginAtZero: true } },
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Top Items Chart */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Top Items by Issuance</h3>
-                <div className="space-y-3">
-                  {topItems.length === 0 ? (
-                    <p className="text-sm text-gray-400">No transaction data available</p>
-                  ) : (
-                    topItems.map(([item, count]) => {
-                      const maxCount = Math.max(...topItems.map((i) => i[1]), 1);
-                      const pct = (count / maxCount) * 100;
-                      return (
-                        <div key={item}>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-xs text-gray-600 truncate">{item}</span>
-                            <span className="text-xs font-medium text-gray-800">{count}</span>
-                          </div>
-                          <div className="h-6 bg-gray-100 rounded overflow-hidden">
-                            <div
-                              className="h-full bg-blue-600 rounded transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Consumption Details Table */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-700">Consumption Details</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-100">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      {['Item', 'Category', 'Opening', 'Issued', 'Returned', 'Closing', 'Value'].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {consumption.map((item, idx) => (
-                      <tr key={`${item.item_name}-${idx}`} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {item.item_name}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{item.category}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.opening} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.issued} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.returned} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.closing} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-800">
-                          ₱
-                          {item.value.toLocaleString('en-PH', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
     </div>
     {expandedCell && (
       <div className="fixed inset-0 z-50" onClick={() => setExpandedCell(null)}>
