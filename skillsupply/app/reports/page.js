@@ -64,7 +64,7 @@ const REPORT_TYPES = [
 ];
 
 function formatAuditValue(val, categories, divisions) {
-  if (val === null || val === undefined || val === 'â€”') return 'â€”';
+  if (val === null || val === undefined || val === '—') return '—';
   if (typeof val !== 'object') return val;
   const obj = typeof val === 'string' ? (() => { try { return JSON.parse(val); } catch { return val; } })() : val;
   if (typeof obj !== 'object' || obj === null) return String(obj);
@@ -413,7 +413,7 @@ export default function ReportsPage() {
       );
       const currentStock = Number(inventoryItem?.quantity ?? 0);
       const unitPrice = Number(inventoryItem?.unit_price ?? 0);
-      const category = inventoryItem?.category_name ?? 'â€”';
+      const category = inventoryItem?.category_name ?? '—';
       const closing = currentStock;
       const opening = currentStock + row.issued - row.returned;
       return {
@@ -515,7 +515,7 @@ export default function ReportsPage() {
             const label = context.dataset.label;
             if (label === 'Items') return `Items: ${division.totalItems}`;
             if (label === 'Quantity') return `Quantity: ${division.totalQuantity.toLocaleString()}`;
-            if (label === 'Value') return `Value: â‚±${Number(division.totalValue || 0).toLocaleString('en-PH')}`;
+            if (label === 'Value') return `Value: ₱${Number(division.totalValue || 0).toLocaleString('en-PH')}`;
             return '';
           }
         }
@@ -760,7 +760,7 @@ export default function ReportsPage() {
             <KpiCard label="Total Returned" value={totalReturned} />
             <KpiCard
               label="Total Value"
-              value={`â‚±${totalValue.toLocaleString('en-US', {
+              value={`₱${totalValue.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}`}
@@ -924,7 +924,7 @@ export default function ReportsPage() {
                             {item.closing} {item.unit}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-gray-800">
-                            â‚±
+                            ₱
                             {item.value.toLocaleString('en-PH', {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
@@ -1068,7 +1068,7 @@ export default function ReportsPage() {
                     <tr key={index} className="hover:bg-gray-50">
                       {Object.keys(reportRows[0]).map((column) => {
                         const val = row[column];
-                        let formattedVal = val ?? 'â€”';
+                        let formattedVal = val ?? '—';
                         if (selectedReport === 'audit' && (column === 'Previous Value' || column === 'New Value')) {
                           formattedVal = formatAuditValue(val, categories, divisions);
                         } else if (column === 'Unit Cost' && typeof val === 'number') {
@@ -1087,12 +1087,12 @@ export default function ReportsPage() {
                         return (
                           <td
                             key={column}
-                            onClick={isAuditCell && formattedVal !== 'â€”' ? (e) => {
+                            onClick={isAuditCell && formattedVal !== '—' ? (e) => {
                               e.stopPropagation();
                               const rect = e.currentTarget.getBoundingClientRect();
                               setExpandedCell({ text: String(formattedVal), x: rect.left, y: rect.bottom + 4 });
                             } : undefined}
-                            className={`px-4 py-3 text-sm text-gray-700 ${isAuditCell ? 'max-w-[280px] truncate' : 'whitespace-nowrap'} ${isAuditCell && formattedVal !== 'â€”' ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                            className={`px-4 py-3 text-sm text-gray-700 ${isAuditCell ? 'max-w-[280px] truncate' : 'whitespace-nowrap'} ${isAuditCell && formattedVal !== '—' ? 'cursor-pointer hover:bg-gray-50' : ''}`}
                           >
                             {formattedVal}
                           </td>
