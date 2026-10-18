@@ -598,6 +598,28 @@ export default function ReportsPage() {
           </div>
         )}
 
+        {/* KPI Cards */}
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonKpiCard key={i} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <KpiCard label="Total Items" value={totalItems} />
+            <KpiCard label="Total Issued" value={totalIssued} />
+            <KpiCard label="Total Returned" value={totalReturned} />
+            <KpiCard
+              label="Total Value"
+              value={`₱${totalValue.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}`}
+            />
+          </div>
+        )}
+
         {/* Dynamic Report Table Card */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -690,14 +712,9 @@ export default function ReportsPage() {
           />
         </div>
 
-        {/* Bottom Section: KPIs, Charts, Consumption Details */}
+        {/* Bottom Section: Charts, Consumption Details */}
         {loading ? (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <SkeletonKpiCard key={i} />
-              ))}
-            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <SkeletonChart />
               <SkeletonChart />
@@ -736,20 +753,6 @@ export default function ReportsPage() {
           </>
         ) : (
           <>
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <KpiCard label="Total Items" value={totalItems} />
-              <KpiCard label="Total Issued" value={totalIssued} />
-              <KpiCard label="Total Returned" value={totalReturned} />
-              <KpiCard
-                label="Total Value"
-                value={`₱${totalValue.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`}
-              />
-            </div>
-
             {/* Charts Row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Monthly Trend Chart */}
