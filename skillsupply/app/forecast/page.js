@@ -267,7 +267,8 @@ export default function ForecastPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Demand Forecast Overview */}
         <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Demand Forecast Overview</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-1">Demand Forecast Overview</h2>
+          <p className="text-[11px] text-gray-400 mb-4">Predicted demand trend based on historical borrowing and requisition patterns</p>
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
@@ -279,7 +280,8 @@ export default function ForecastPage() {
 
         {/* Forecasted Consumption by Category */}
         <div className="bg-white rounded-xl shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Forecasted by Category</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-1">Forecasted by Category</h2>
+          <p className="text-[11px] text-gray-400 mb-4">Projected consumption share by item category for the next period</p>
           {!hasLoaded ? (
             <SkeletonChart className="border-0 p-0 shadow-none" />
           ) : (
