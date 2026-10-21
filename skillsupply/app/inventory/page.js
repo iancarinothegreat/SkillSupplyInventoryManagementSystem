@@ -427,7 +427,7 @@ export default function InventoryPage() {
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 min-h-28 flex flex-col justify-between">
                 <p className="text-xs font-semibold text-[#8a96ab] uppercase tracking-[0.14em] leading-5">Est. Value</p>
                 <p className="text-[11px] text-gray-400 leading-4 mt-1">Current stock value at unit cost</p>
-                <p className="text-3xl font-bold text-[#1f2d42] leading-none">₱{estValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-3xl font-bold text-[#1f2d42] leading-none">₱{estValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
               </div>
             </>
           )}
