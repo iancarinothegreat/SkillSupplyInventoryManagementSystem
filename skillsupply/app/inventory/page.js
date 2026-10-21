@@ -391,7 +391,7 @@ export default function InventoryPage() {
   const criticalStock = items.filter((it) => {
     const qty = parseInt(it.quantity || it.quantity_on_hand || 0);
     const reorder = parseInt(it.reorder_point || it.reorder_level || 0);
-    return qty <= reorder && qty > 0;
+    return qty <= reorder;
   }).length;
   const estValue = items.reduce((sum, it) => {
     const q = parseFloat(it.quantity || it.quantity_on_hand || 0) || 0;
